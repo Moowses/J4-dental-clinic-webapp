@@ -432,10 +432,10 @@ export default function ChatbotWidget() {
       case "openLogin": {
         pushUser("log in");
         if (isLoggedIn) {
-          pushAssistant("You’re already logged in. 😊", { quick: defaultQuick });
+          pushAssistant("You’re already logged in. 😊");
           return;
         }
-        pushAssistant("No problem — please log in to continue.", { quick: defaultQuick });
+        pushAssistant("No problem — please log in to continue.");
         openAuth("login");
         return;
       }
@@ -443,12 +443,10 @@ export default function ChatbotWidget() {
       case "openSignup": {
         pushUser("create account");
         if (isLoggedIn) {
-          pushAssistant("You’re already logged in. 😊", { quick: defaultQuick });
+          pushAssistant("You’re already logged in. 😊");
           return;
         }
-        pushAssistant("Sure — let’s create your account so you can book appointments.", {
-          quick: defaultQuick,
-        });
+        pushAssistant("Sure — let’s create your account so you can book appointments.");
         openAuth("signup");
         return;
       }
@@ -468,7 +466,7 @@ export default function ChatbotWidget() {
         const list = await loadUpcoming();
 
         if (!list.length) {
-          pushAssistant("You have no upcoming appointments right now.", { quick: defaultQuick });
+          pushAssistant("You have no upcoming appointments right now.");
           return;
         }
 
@@ -495,7 +493,7 @@ export default function ChatbotWidget() {
 
         const list = upcoming.length ? upcoming : await loadUpcoming();
         if (!list.length) {
-          pushAssistant("You have no upcoming appointments to cancel.", { quick: defaultQuick });
+          pushAssistant("You have no upcoming appointments to cancel.");
           return;
         }
 
@@ -526,10 +524,10 @@ export default function ChatbotWidget() {
           const res = await cancelAppointmentAction(id);
           if (!res?.success) throw new Error(res?.error || "Failed to cancel");
 
-          pushAssistant("Cancelled ✅ I’ve cancelled your appointment. Anything else?", { quick: defaultQuick });
+          pushAssistant("Cancelled ✅ I’ve cancelled your appointment. Anything else?");
           await loadUpcoming();
         } catch {
-          pushAssistant("Sorry, I couldn’t cancel that appointment. Please try again or contact the clinic.", { quick: defaultQuick });
+          pushAssistant("Sorry, I couldn’t cancel that appointment. Please try again or contact the clinic.");
         }
 
         return;
@@ -538,7 +536,7 @@ export default function ChatbotWidget() {
       case "cancelAbort": {
         pushUser("no");
         setCancelTarget(null);
-        pushAssistant("No worries. What would you like to do next?", { quick: defaultQuick });
+        pushAssistant("No worries. What would you like to do next?");
         return;
       }
 
@@ -569,15 +567,13 @@ export default function ChatbotWidget() {
               quick: [
                 { label: "Log in", action: "openLogin" },
                 { label: "Create account", action: "openSignup" },
-                ...defaultQuick,
               ],
             }
           );
           return;
         }
         pushAssistant(
-          "You can:\n• View services\n• Book an appointment\n• Ask about clinic hours/location\n\nUse the buttons to avoid typing errors.",
-          { quick: defaultQuick }
+          "You can:\n• View services\n• Book an appointment\n• Ask about clinic hours/location\n\nUse the buttons to avoid typing errors."
         );
         return;
       }
@@ -608,7 +604,7 @@ export default function ChatbotWidget() {
       const lower = q.toLowerCase();
       const faqAnswer = findFaqAnswer(q);
       if (faqAnswer) {
-        pushAssistant(faqAnswer, { quick: defaultQuick });
+        pushAssistant(faqAnswer);
         return;
       }
 
@@ -677,8 +673,7 @@ export default function ChatbotWidget() {
       // Unknown question fallback (2 messages, as requested)
       pushAssistant("I’m still learning, but I’ll keep getting better. 🦷");
       pushAssistant(
-        "For now, here’s what I can do:\n• Book appointments\n• View upcoming bookings\n• Cancel appointments",
-        { quick: defaultQuick }
+        "For now, here’s what I can do:\n• Book appointments\n• View upcoming bookings\n• Cancel appointments"
       );
     } finally {
       setSending(false);
@@ -701,7 +696,7 @@ export default function ChatbotWidget() {
         onClose={() => setBookOpen(false)}
         onBooked={() => {
           setBookOpen(false);
-          pushAssistant("Booked ✅ Your appointment request has been submitted. Anything else?", { quick: defaultQuick });
+          pushAssistant("Booked ✅ Your appointment request has been submitted. Anything else?");
         }}
       />
 
