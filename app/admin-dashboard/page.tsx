@@ -27,12 +27,14 @@ import ReportsPanel from "@/components/admin/ReportsPanel";
 import StaffAccountSettingsPanel from "@/components/admin/StaffAccountSettingsPanel";
 import DashboardAnalyticsPanel from "@/components/admin/DashboardAnalyticsPanel";
 import TreatmentRecordsPanel from "@/components/admin/TreatmentRecordsPanel";
+import DentistOverviewInsightsPanel from "@/components/admin/DentistOverviewInsightsPanel";
 
 // ✅ NEW
 import ClinicSettings from "@/components/admin/ClinicSettings";
 
 type TabKey =
   | "dashboard"
+  | "dentist-appointment"
   | "appointments"
   | "billing"
   | "inventory"
@@ -100,6 +102,7 @@ export default function AdminDashboardPage() {
         if (tab === "reports" && !canSeeReports) setTab("dashboard");
         if (tab === "treatment-records" && !canSeeTreatmentRecords) setTab("dashboard");
         if (tab === "clinic-settings" && !canSeeClinicSettings) setTab("dashboard"); // ✅ NEW
+        if (tab === "dentist-appointment" && !isDentist) setTab("dashboard");
       }
     }, [
       tab,
@@ -109,6 +112,7 @@ export default function AdminDashboardPage() {
       canSeeReports,
       canSeeTreatmentRecords,
       canSeeClinicSettings,
+      isDentist,
       loading,
       user,
     ]);
@@ -284,6 +288,22 @@ export default function AdminDashboardPage() {
 
   const goInventory = () => setTab("inventory");
 
+  const getMetricSizeClass = (displayValue: string) => {
+    const len = displayValue.length;
+    if (len >= 16) return "text-lg sm:text-xl";
+    if (len >= 12) return "text-xl sm:text-2xl";
+    if (len >= 9) return "text-2xl sm:text-3xl";
+    return "text-3xl";
+  };
+
+  const todaysAppointmentsDisplay = Number(
+    clinicOverview.todaysAppointments || 0
+  ).toLocaleString();
+  const monthlySalesDisplay = `PHP ${Number(
+    clinicOverview.monthlySales || 0
+  ).toLocaleString()}`;
+  const lowStockDisplay = Number(clinicOverview.lowStockItems || 0).toLocaleString();
+
   return (
     <div className="min-h-screen bg-[#f6f8fb]">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -313,6 +333,19 @@ export default function AdminDashboardPage() {
               >
                 Dashboard
               </button>
+
+              {isDentist && (
+                <button
+                  className={`w-full text-left px-4 py-3 rounded-xl font-extrabold ${
+                    tab === "dentist-appointment"
+                      ? "bg-slate-900 text-white"
+                      : "bg-white border border-slate-200 hover:bg-slate-50 text-slate-900"
+                  }`}
+                  onClick={() => setTab("dentist-appointment")}
+                >
+                  Appointment
+                </button>
+              )}
 
               {canSeeAppointments && (
                 <div>
@@ -489,10 +522,10 @@ export default function AdminDashboardPage() {
                     </div>
                   <div className="text-white">
                     <p className="text-xs font-bold opacity-90">Staff Dashboard</p>
-                    <p className="text-2xl font-extrabold leading-tight">
+                    <p className="text-xl sm:text-2xl font-extrabold leading-tight break-words [overflow-wrap:anywhere]">
                       {user.displayName || "Staff"}
                     </p>
-                    <p className="text-sm opacity-90">{user.email}</p>
+                    <p className="text-sm opacity-90 break-all">{user.email}</p>
                   </div>
                 </div>
 
@@ -514,7 +547,7 @@ export default function AdminDashboardPage() {
                   <section className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
                     <div className="flex items-end justify-between gap-3">
                       <div>
-                        <p className="text-xl font-extrabold text-slate-900">
+                        <p className="text-lg sm:text-xl font-extrabold text-slate-900">
                           Clinic Overview
                         </p>
                         <p className="text-sm text-slate-500">
@@ -533,12 +566,16 @@ export default function AdminDashboardPage() {
                         className="text-left rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition p-5"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-extrabold text-slate-600">
                               Today&apos;s Appointments
                             </p>
-                            <p className="mt-3 text-4xl font-extrabold text-slate-900">
-                              {clinicOverview.todaysAppointments}
+                            <p
+                              className={`mt-2 font-extrabold text-slate-900 leading-tight break-words [overflow-wrap:anywhere] tabular-nums ${getMetricSizeClass(
+                                todaysAppointmentsDisplay
+                              )}`}
+                            >
+                              {todaysAppointmentsDisplay}
                             </p>
                             <p className="mt-2 text-xs text-slate-500">
                               Click to open the calendar
@@ -556,11 +593,15 @@ export default function AdminDashboardPage() {
                         className="text-left rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition p-5"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-extrabold text-slate-600">
                               Total Sales (This Month)
                             </p>
-                            <p className="mt-3 text-4xl font-extrabold text-slate-900">
+                            <p
+                              className={`mt-2 font-extrabold text-slate-900 leading-tight break-words [overflow-wrap:anywhere] tabular-nums ${getMetricSizeClass(
+                                monthlySalesDisplay
+                              )}`}
+                            >
                               ₱{Number(clinicOverview.monthlySales || 0).toLocaleString()}
                             </p>
                             <p className="mt-2 text-xs text-slate-500">
@@ -580,12 +621,16 @@ export default function AdminDashboardPage() {
                           className="text-left rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition p-5"
                         >
                           <div className="flex items-start justify-between gap-3">
-                            <div>
+                            <div className="min-w-0">
                               <p className="text-sm font-extrabold text-slate-600">
                                 Low Stock Items
                               </p>
-                              <p className="mt-3 text-4xl font-extrabold text-slate-900">
-                                {clinicOverview.lowStockItems}
+                              <p
+                                className={`mt-2 font-extrabold text-slate-900 leading-tight break-words [overflow-wrap:anywhere] tabular-nums ${getMetricSizeClass(
+                                  lowStockDisplay
+                                )}`}
+                              >
+                                {lowStockDisplay}
                               </p>
                               <p className="mt-2 text-xs text-slate-500">
                                 Click to open inventory
@@ -601,8 +646,14 @@ export default function AdminDashboardPage() {
                   </section>
                 )}
 
-                {isDentist && <DentistSchedulePanel />}
+                {isDentist && <DentistOverviewInsightsPanel />}
                 {canSeeAnalytics && <DashboardAnalyticsPanel />}
+              </div>
+            )}
+
+            {tab === "dentist-appointment" && isDentist && (
+              <div className="space-y-6">
+                <DentistSchedulePanel />
               </div>
             )}
 

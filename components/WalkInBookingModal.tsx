@@ -9,12 +9,19 @@ import {
   CalendarAvailability,
   getAvailabilityAction,
 } from "@/app/actions/appointment-actions";
+import {
+  autoSendPatientPasswordSetupIfVerifiedAction,
+  createPatientAccountByStaffAction,
+  sendPatientVerificationEmailAction,
+  sendUserPasswordResetByEmailAction,
+} from "@/app/actions/admin-actions";
 
 import { getAllProcedures } from "@/lib/services/clinic-service";
 import type { DentalProcedure } from "@/lib/types/clinic";
 
-import { searchPatients } from "@/lib/services/user-service";
+import { getUserProfile, searchPatients } from "@/lib/services/user-service";
 import type { UserProfile } from "@/lib/types/user";
+import { PatientEditModal } from "@/components/admin/PatientRecordsPanel";
 
 const BRAND = "#0E4B5A";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -114,6 +121,342 @@ function SlotButton({
   );
 }
 
+type CreatedPatientAccount = {
+  uid: string;
+  email: string;
+  patientId?: string;
+};
+
+type TakenAccountInfo = {
+  uid: string;
+  email: string;
+  emailVerified?: boolean;
+};
+
+function CreatePatientAccountModal({
+  open,
+  onClose,
+  idToken,
+  suggestedEmail,
+  onCreated,
+  onProfileCompleted,
+}: {
+  open: boolean;
+  onClose: () => void;
+  idToken: string;
+  suggestedEmail?: string;
+  onCreated: (payload: CreatedPatientAccount) => void;
+  onProfileCompleted?: (uid: string) => void | Promise<void>;
+}) {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [email, setEmail] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+  const [created, setCreated] = useState<CreatedPatientAccount | null>(null);
+  const [emailTaken, setEmailTaken] = useState(false);
+  const [takenAccount, setTakenAccount] = useState<TakenAccountInfo | null>(null);
+  const [sendingVerify, setSendingVerify] = useState(false);
+  const [autoSetupStatus, setAutoSetupStatus] = useState<
+    "idle" | "checking" | "waiting_verification" | "sent" | "error"
+  >("idle");
+  const looksLikeEmail = (value?: string) =>
+    Boolean(value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()));
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(1);
+    setEmail(looksLikeEmail(suggestedEmail) ? (suggestedEmail || "").trim() : "");
+    setCreating(false);
+    setSendingReset(false);
+    setMsg("");
+    setError("");
+    setCreated(null);
+    setEmailTaken(false);
+    setTakenAccount(null);
+    setSendingVerify(false);
+    setAutoSetupStatus("idle");
+  }, [open]);
+
+  const handleCreate = async () => {
+    setCreating(true);
+    setError("");
+    setMsg("");
+    setEmailTaken(false);
+    setTakenAccount(null);
+    try {
+      const res = await createPatientAccountByStaffAction({
+        idToken,
+        email: email.trim(),
+      });
+      if (!res?.success) {
+        if (res?.code === "EMAIL_TAKEN") {
+          setEmailTaken(true);
+          setTakenAccount(
+            res?.uid && res?.email
+              ? {
+                  uid: String(res.uid),
+                  email: String(res.email),
+                  emailVerified: Boolean(res.emailVerified),
+                }
+              : null
+          );
+          setError(res?.error || "This email is already taken.");
+          return;
+        }
+        if (res?.uid && res?.email) {
+          const payload: CreatedPatientAccount = {
+            uid: String(res.uid),
+            email: String(res.email),
+            patientId: res.patientId ? String(res.patientId) : undefined,
+          };
+          setCreated(payload);
+          setStep(2);
+          onCreated(payload);
+          setError(res?.error || "Account created, but verification email failed.");
+          return;
+        }
+        setError(res?.error || "Failed to create account.");
+        return;
+      }
+      const payload: CreatedPatientAccount = {
+        uid: String(res.uid || ""),
+        email: String(res.email || email.trim()),
+        patientId: res.patientId ? String(res.patientId) : undefined,
+      };
+      setCreated(payload);
+      setStep(2);
+      setMsg(
+        "Step 1 completed: verification email sent. After the patient confirms email, send password setup email."
+      );
+      onCreated(payload);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleSendTakenReset = async () => {
+    if (!idToken || !email.trim()) return;
+    setSendingReset(true);
+    setError("");
+    setMsg("");
+    try {
+      const res = await sendUserPasswordResetByEmailAction({
+        idToken,
+        email: email.trim(),
+      });
+      if (!res?.success) {
+        setError(res?.error || "Failed to send reset password email.");
+        return;
+      }
+      setMsg("Reset password email sent.");
+    } finally {
+      setSendingReset(false);
+    }
+  };
+
+  const handleSendTakenVerify = async () => {
+    if (!idToken || !takenAccount?.uid) return;
+    setSendingVerify(true);
+    setError("");
+    setMsg("");
+    try {
+      const res = await sendPatientVerificationEmailAction({
+        idToken,
+        targetUid: takenAccount.uid,
+      });
+      if (!res?.success) {
+        setError(res?.error || "Failed to send verification email.");
+        return;
+      }
+      setMsg("Verification email sent.");
+    } finally {
+      setSendingVerify(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || step !== 2 || !created?.uid || !idToken) return;
+    let active = true;
+    setAutoSetupStatus("checking");
+
+    const run = async () => {
+      const res = await autoSendPatientPasswordSetupIfVerifiedAction({
+        idToken,
+        targetUid: created.uid,
+      });
+      if (!active) return;
+      if (!res?.success) {
+        setAutoSetupStatus("error");
+        const errMsg = res && "error" in res ? res.error : "";
+        setError(errMsg || "Failed to auto-check password setup status.");
+        return;
+      }
+      const setupStatus = "status" in res ? res.status : undefined;
+      if (setupStatus === "waiting_verification") {
+        setAutoSetupStatus("waiting_verification");
+        return;
+      }
+      if (setupStatus === "sent_now" || setupStatus === "already_sent") {
+        setAutoSetupStatus("sent");
+        setMsg("Password setup email is ready/sent after email verification.");
+      }
+    };
+
+    run();
+    const t = setInterval(run, 8000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
+  }, [open, step, created?.uid, idToken]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4">
+        <div className="flex w-full max-w-6xl max-h-[92vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <div>
+              <p className="text-base font-extrabold text-slate-900">Create Patient Account</p>
+              <p className="text-xs text-slate-500">Step {step} of 2</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Close"
+            >
+              x
+            </button>
+          </div>
+
+          <div className="space-y-4 overflow-y-auto px-5 py-5">
+            {step === 1 ? (
+              <>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                  Step 1: Create user account email. We send a verification email first. After email
+                  confirmation, send password setup email.
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                    Account Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="patient@email.com"
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-300"
+                  />
+                </div>
+
+                {emailTaken ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    This email is already taken. Do you want to send reset password?
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {!takenAccount?.emailVerified && takenAccount?.uid ? (
+                        <button
+                          type="button"
+                          onClick={handleSendTakenVerify}
+                          disabled={sendingVerify || !idToken}
+                          className="rounded-lg border border-amber-300 bg-white px-3 py-1 font-bold text-amber-700 disabled:opacity-60"
+                        >
+                          {sendingVerify ? "Sending..." : "Send Verification Email"}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={handleSendTakenReset}
+                        disabled={sendingReset || !idToken}
+                        className="rounded-lg border border-amber-300 bg-white px-3 py-1 font-bold text-amber-700 disabled:opacity-60"
+                      >
+                        {sendingReset ? "Sending..." : "Send Reset Password"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreate}
+                    disabled={creating || !idToken || !email.trim()}
+                    className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-black disabled:opacity-60"
+                  >
+                    {creating ? "Creating..." : "Create Account"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                  Step 2: Complete patient record form below.
+                </div>
+                <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">
+                  Patient cannot access the dashboard until email is confirmed and password is set.
+                  This flow sends 2 separate emails.
+                </div>
+                <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-700">
+                  <p>
+                    <span className="font-bold">Email:</span> {created?.email || "—"}
+                  </p>
+                  <p>
+                    <span className="font-bold">Patient ID:</span> {created?.patientId || "Pending"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700">
+                  <span className="font-bold">Password Setup Email:</span>{" "}
+                  {autoSetupStatus === "checking" && "Checking verification status..."}
+                  {autoSetupStatus === "waiting_verification" &&
+                    "Waiting for patient to confirm email (auto-send will trigger after confirmation)."}
+                  {autoSetupStatus === "sent" && "Sent automatically after email verification."}
+                  {autoSetupStatus === "error" && "Error checking auto-send status."}
+                  {autoSetupStatus === "idle" && "Pending..."}
+                </div>
+
+                {created?.uid ? (
+                  <PatientEditModal
+                    inline
+                    patientId={created.uid}
+                    onSaved={async () => {
+                      setMsg("Patient record saved.");
+                      if (onProfileCompleted) {
+                        await onProfileCompleted(created.uid);
+                      }
+                    }}
+                    onClose={onClose}
+                    initialEmail={created.email}
+                    lockEmail
+                    onboardingMode
+                    title="Step 2: Complete Patient Record"
+                    subtitle="Fill required personal/contact details. Email is locked to the created account."
+                    confirmOnSave
+                    confirmMessage="Are you sure you want to proceed?"
+                  />
+                ) : null}
+              </>
+            )}
+
+            {error ? <p className="text-sm font-bold text-red-600">{error}</p> : null}
+            {msg ? <p className="text-sm font-bold text-emerald-700">{msg}</p> : null}
+          </div>
+        </div>
+      </div>
+
+    </>
+  );
+}
+
 export default function WalkInBookingModal({
   open,
   onClose,
@@ -128,10 +471,15 @@ export default function WalkInBookingModal({
   const { user } = useAuth();
   const router = useRouter();
 
-  const role = (user as any)?.role as "admin" | "staff" | "client" | undefined;
+  const role = (user as any)?.role as
+    | "admin"
+    | "front-desk"
+    | "staff"
+    | "client"
+    | undefined;
 
   // ✅ staff mode works even if user.role isn't present
-  const isStaff = forceStaff || role === "admin" || role === "staff";
+  const isStaff = forceStaff || role === "admin" || role === "front-desk" || role === "staff";
 
   const [state, formAction, isPending] = useActionState(
     isStaff ? staffBookAppointmentAction : bookAppointmentAction,
@@ -162,6 +510,8 @@ export default function WalkInBookingModal({
 
   // Name used for booking (display only + passed to action)
   const [fullName, setFullName] = useState("");
+  const [idToken, setIdToken] = useState("");
+  const [createPatientOpen, setCreatePatientOpen] = useState(false);
 
   const [procedures, setProcedures] = useState<DentalProcedure[]>([]);
   const [procLoading, setProcLoading] = useState(false);
@@ -219,6 +569,25 @@ export default function WalkInBookingModal({
     };
   }, [open, procedures.length]);
 
+  useEffect(() => {
+    let active = true;
+    if (!open || !isStaff || !user) {
+      setIdToken("");
+      return;
+    }
+    user
+      .getIdToken()
+      .then((t: string) => {
+        if (active) setIdToken(t);
+      })
+      .catch(() => {
+        if (active) setIdToken("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, isStaff, user]);
+
   // Patient search (debounced + only when 2+ chars)
   useEffect(() => {
     if (!open) return;
@@ -259,6 +628,7 @@ export default function WalkInBookingModal({
       setPatientResults([]);
       setPatientOpen(false);
       setSelectedPatient(null);
+      setCreatePatientOpen(false);
 
       setFullName("");
       return;
@@ -520,13 +890,32 @@ export default function WalkInBookingModal({
                       : "Select a patient from results."}
                   </div>
 
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setCreatePatientOpen(true)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-700 hover:bg-slate-50"
+                    >
+                      + Create user if no account
+                    </button>
+                  </div>
+
                   {patientOpen && patientQuery.trim().length >= 2 ? (
                     <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
                       <div className="max-h-64 overflow-auto">
                         {patientLoading ? (
                           <div className="px-4 py-3 text-sm text-slate-500">Searching...</div>
                         ) : patientResults.length === 0 ? (
-                          <div className="px-4 py-3 text-sm text-slate-500">No patients found.</div>
+                          <div className="px-4 py-3 text-sm text-slate-500">
+                            No patients found.
+                            <button
+                              type="button"
+                              onClick={() => setCreatePatientOpen(true)}
+                              className="ml-2 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-extrabold text-slate-700 hover:bg-slate-50"
+                            >
+                              Create account
+                            </button>
+                          </div>
                         ) : (
                           patientResults.map((p) => (
                             <button
@@ -541,7 +930,7 @@ export default function WalkInBookingModal({
                               className="w-full px-4 py-3 text-left hover:bg-slate-50"
                             >
                               <div className="text-sm font-extrabold text-slate-900">
-                                {p.displayName || "Unnamed Patient"}
+                                {p.displayName || p.email || "Unnamed Patient"}
                               </div>
                               <div className="text-xs text-slate-500">{p.email || ""}</div>
                             </button>
@@ -630,6 +1019,36 @@ export default function WalkInBookingModal({
           </div>
         </div>
       </div>
+
+      <CreatePatientAccountModal
+        open={createPatientOpen}
+        onClose={() => setCreatePatientOpen(false)}
+        idToken={idToken}
+        suggestedEmail={patientQuery}
+        onCreated={async ({ uid, email }) => {
+          setPatientQuery(email || "");
+          setPatientOpen(false);
+          const res = await searchPatients(email || "");
+          if (!res.success || !res.data) return;
+          const found = (res.data as UserProfile[]).find((p) => p.uid === uid);
+          if (!found) return;
+          setSelectedPatient(found);
+          setPatientQuery(found.displayName || found.email || email || "");
+          setPatientResults(res.data as UserProfile[]);
+          setPatientOpen(false);
+          setClientError("");
+          setFullName(found.displayName || "");
+        }}
+        onProfileCompleted={async (uid) => {
+          const res = await getUserProfile(uid);
+          if (!res?.success || !res.data) return;
+          const updated = res.data as UserProfile;
+          setSelectedPatient(updated);
+          setPatientQuery(updated.displayName || updated.email || "");
+          setFullName(updated.displayName || updated.email || "");
+          setClientError("");
+        }}
+      />
     </div>
   );
 }

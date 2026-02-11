@@ -2,22 +2,24 @@
 "use client";
 
 import type { Appointment } from "@/lib/types/appointment";
-import { cancelAppointmentAction } from "@/app/actions/appointment-actions";
 
 export default function AppointmentRowActions({
   appointment,
   onView,
   onTransactions,
+  onConfirm,
   onCancel,
 }: {
   appointment: Appointment;
   onView: () => void;
   onTransactions: () => void;
+  onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const status = String((appointment as any).status || "").toLowerCase();
+  const status = String(appointment.status || "").toLowerCase();
+  const canConfirm = status === "pending";
   const canCancel = status === "pending";
-  const canTransactions = status === "completed" && !!(appointment as any).treatment;
+  const canTransactions = status === "completed" && !!appointment.treatment;
 
   return (
     <div className="flex gap-2">
@@ -43,12 +45,21 @@ export default function AppointmentRowActions({
       </button>
 
       {canCancel && (
-        <button
-          className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
+        <>
+          <button
+            className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+            onClick={onConfirm}
+            disabled={!canConfirm}
+          >
+            Confirm
+          </button>
+          <button
+            className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+        </>
       )}
     </div>
   );

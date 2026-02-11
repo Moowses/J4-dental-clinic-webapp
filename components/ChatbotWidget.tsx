@@ -49,7 +49,43 @@ function uid() {
 }
 
 function normalize(text: string) {
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
+  const lowered = text.toLowerCase();
+  const replacements: Array<[RegExp, string]> = [
+    [/\bngipon\b/g, "tooth"],
+    [/\bngilo\b/g, "tooth sensitivity"],
+    [/\bsakit\b/g, "pain"],
+    [/\bmasakit\b/g, "painful"],
+    [/\bgilagid\b/g, "gums"],
+    [/\bdumudugo\b/g, "bleeding"],
+    [/\bpa[- ]?book\b/g, "book"],
+    [/\bpa[- ]?schedule\b/g, "schedule"],
+    [/\biskedyul\b/g, "schedule"],
+    [/\btipanan\b/g, "appointment"],
+    [/\bkansel\b/g, "cancel"],
+    [/\bresched\b/g, "reschedule"],
+    [/\bserbisyo\b/g, "service"],
+    [/\bpila\b/g, "how much"],
+    [/\bmagkano\b/g, "how much"],
+    [/\bbayad\b/g, "payment"],
+    [/\bpresyo\b/g, "price"],
+    [/\blugar\b/g, "location"],
+    [/\basan\b/g, "where"],
+    [/\basa\b/g, "where"],
+    [/\boras\b/g, "hours"],
+    [/\babli\b/g, "open"],
+    [/\bsarado\b/g, "close"],
+    [/\bemergency\b/g, "emergency"],
+    [/\bkalit\b/g, "urgent"],
+    [/\bkonsulta\b/g, "consultation"],
+    [/\bbata\b/g, "children"],
+    [/\btigulang\b/g, "senior"],
+  ];
+  const mapped = replacements.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), lowered);
+
+  return mapped
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseFaq(text: string) {
@@ -70,8 +106,20 @@ const FAQ_PAIRS = STATIC_KNOWLEDGE.flatMap((k) => parseFaq(k.text));
 function findFaqAnswer(message: string) {
   if (!message) return null;
   const normalized = normalize(message);
+  const messageTokens = normalized.split(" ").filter(Boolean);
+
   for (const faq of FAQ_PAIRS) {
-    if (normalized.includes(normalize(faq.q))) return faq.a;
+    const q = normalize(faq.q);
+    if (normalized === q) return faq.a;
+    if (normalized.includes(q)) return faq.a;
+
+    if (normalized.length < 8 || messageTokens.length < 2) continue;
+
+    if (q.includes(normalized)) return faq.a;
+
+    const qTokens = q.split(" ").filter(Boolean);
+    const overlap = messageTokens.filter((t) => qTokens.includes(t)).length;
+    if (overlap >= Math.max(2, Math.ceil(messageTokens.length * 0.7))) return faq.a;
   }
   return null;
 }
@@ -85,6 +133,7 @@ function formatPeso(amount?: number | null) {
 }
 
 export default function ChatbotWidget() {
+  const REPLY_DELAY_MS = 900;
   const { user } = useAuth();
   const displayName = user?.displayName?.trim() || "";
   const isLoggedIn = !!user;
@@ -140,8 +189,12 @@ export default function ChatbotWidget() {
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [assistantTyping, setAssistantTyping] = useState(false);
+  const [languagePreference, setLanguagePreference] = useState<"english" | "bisaya" | "tagalog" | "">("");
 
   const endRef = useRef<HTMLDivElement | null>(null);
+  const replyQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingRepliesRef = useRef(0);
 
   const defaultQuick: Quick[] = useMemo(() => {
     const base: Quick[] = [
@@ -200,10 +253,28 @@ export default function ChatbotWidget() {
   }
 
   function pushAssistant(text: string, opts?: { quick?: Quick[]; render?: Msg["render"] }) {
-    setMsgs((m) => [
-      ...m,
-      { id: uid(), role: "assistant", text, quick: opts?.quick, render: opts?.render },
-    ]);
+    pendingRepliesRef.current += 1;
+    setAssistantTyping(true);
+
+    replyQueueRef.current = replyQueueRef.current
+      .then(
+        () =>
+          new Promise<void>((resolve) => {
+            setTimeout(() => {
+              setMsgs((m) => [
+                ...m,
+                { id: uid(), role: "assistant", text, quick: opts?.quick, render: opts?.render },
+              ]);
+              resolve();
+            }, REPLY_DELAY_MS);
+          })
+      )
+      .finally(() => {
+        pendingRepliesRef.current -= 1;
+        if (pendingRepliesRef.current <= 0) {
+          setAssistantTyping(false);
+        }
+      });
   }
 
   /**
@@ -601,11 +672,38 @@ export default function ChatbotWidget() {
     setSending(true);
 
     try {
-      const lower = q.toLowerCase();
+      const lower = normalize(q);
+      const wantsEnglish =
+        lower.includes("english") ||
+        lower.includes("i mean english") ||
+        lower.includes("dili ko kasabot og bisaya") ||
+        lower.includes("dili ko kasabot ug bisaya");
+      const wantsBisaya =
+        lower.includes("bisaya") ||
+        lower.includes("cebuano") ||
+        lower.includes("can you talk bisaya") ||
+        lower.includes("mag bisaya") ||
+        lower.includes("dili ko kasabot og english") ||
+        lower.includes("dili ko kasabot ug english");
+      const wantsTagalog = lower.includes("tagalog") || lower.includes("filipino") || lower.includes("mag tagalog");
+      const effectiveLanguage: "english" | "bisaya" | "tagalog" | "" = wantsEnglish
+        ? "english"
+        : wantsBisaya
+          ? "bisaya"
+          : wantsTagalog
+            ? "tagalog"
+            : languagePreference;
+
+      if (wantsEnglish) setLanguagePreference("english");
+      if (wantsBisaya) setLanguagePreference("bisaya");
+      if (wantsTagalog) setLanguagePreference("tagalog");
+
       const faqAnswer = findFaqAnswer(q);
       if (faqAnswer) {
-        pushAssistant(faqAnswer);
-        return;
+        if (!effectiveLanguage || effectiveLanguage === "english") {
+          pushAssistant(faqAnswer);
+          return;
+        }
       }
 
       // Local routing to avoid human error
@@ -670,11 +768,38 @@ export default function ChatbotWidget() {
         return;
       }
 
-      // Unknown question fallback (2 messages, as requested)
+      // Try server bot (FAQ + Gemini fallback) before local unknown fallback.
+      try {
+        const idToken = isLoggedIn ? await user?.getIdToken() : undefined;
+        const res = await fetch("/api/clinic-bot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: q,
+            idToken,
+            displayName,
+            languagePreference: effectiveLanguage || languagePreference,
+          }),
+        });
+
+        if (res.ok) {
+          const data: any = await res.json().catch(() => null);
+          const nextLanguage = typeof data?.languagePreference === "string" ? data.languagePreference : "";
+          if (nextLanguage === "english" || nextLanguage === "bisaya" || nextLanguage === "tagalog") {
+            setLanguagePreference(nextLanguage);
+          }
+          const reply = typeof data?.reply === "string" ? data.reply.trim() : "";
+          if (reply) {
+            pushAssistant(reply);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to local fallback.
+      }
+
       pushAssistant("I’m still learning, but I’ll keep getting better. 🦷");
-      pushAssistant(
-        "For now, here’s what I can do:\n• Book appointments\n• View upcoming bookings\n• Cancel appointments"
-      );
+      pushAssistant("For now, here’s what I can do:\n• Book appointments\n• View upcoming bookings\n• Cancel appointments");
     } finally {
       setSending(false);
     }
@@ -753,6 +878,15 @@ export default function ChatbotWidget() {
                     </div>
                   </div>
                 ))}
+                {assistantTyping ? (
+                  <div className="flex justify-start">
+                    <div className="max-w-[88%]">
+                      <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm leading-relaxed text-slate-700">
+                        Tooth Fairy is typing...
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div ref={endRef} />
               </div>

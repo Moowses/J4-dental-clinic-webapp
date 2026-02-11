@@ -536,7 +536,7 @@ export default function DashboardAnalyticsPanel() {
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-xl font-extrabold text-slate-900">Dashboard Insights</p>
+          <p className="text-lg sm:text-xl font-extrabold text-slate-900">Dashboard Insights</p>
           <p className="text-sm text-slate-500">Charts for sales and appointments.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -547,7 +547,7 @@ export default function DashboardAnalyticsPanel() {
                 key={key}
                 onClick={() => setRangeKey(key)}
                 className={[
-                  "rounded-full px-3 py-1.5 text-sm font-semibold transition",
+                  "rounded-full px-3 py-1.5 text-xs sm:text-sm font-semibold transition",
                   rangeKey === key
                     ? "bg-slate-900 text-white"
                     : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
@@ -612,15 +612,17 @@ export default function DashboardAnalyticsPanel() {
               </div>
               <div className="mt-2 space-y-1 text-xs text-slate-600">
                 {topProcedures.map((p) => (
-                  <div key={p.name} className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-2 truncate">
+                  <div key={p.name} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 inline-flex items-center gap-2 truncate">
                       <span
                         className="inline-block h-2.5 w-2.5 rounded-full"
                         style={{ background: barPalette[topProcedures.indexOf(p) % barPalette.length] }}
                       />
                       <span className="truncate">{p.name}</span>
                     </span>
-                    <span className="font-extrabold">PHP {money(p.amount)}</span>
+                    <span className="shrink-0 text-xs sm:text-sm font-extrabold tabular-nums text-right">
+                      PHP {money(p.amount)}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -645,15 +647,17 @@ export default function DashboardAnalyticsPanel() {
               </div>
               <div className="mt-2 space-y-1 text-xs text-slate-600">
                 {dentistIncome.slice(0, 6).map((d, i) => (
-                  <div key={d.dentistId} className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-2 truncate">
+                  <div key={d.dentistId} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 inline-flex items-center gap-2 truncate">
                       <span
                         className="inline-block h-2.5 w-2.5 rounded-full"
                         style={{ background: barPalette[i % barPalette.length] }}
                       />
                       <span className="truncate">{d.dentistName}</span>
                     </span>
-                    <span className="font-extrabold">PHP {money(d.collected)}</span>
+                    <span className="shrink-0 text-xs sm:text-sm font-extrabold tabular-nums text-right">
+                      PHP {money(d.collected)}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -677,22 +681,22 @@ export default function DashboardAnalyticsPanel() {
               height={140}
             />
           </div>
-          <div className="mt-3 space-y-2 text-sm text-slate-700">
+          <div className="mt-3 space-y-2 text-xs sm:text-sm text-slate-700">
             <div className="flex items-center justify-between">
               <span>0-30 days</span>
-              <span className="font-extrabold">PHP {money(aging["0-30"])}</span>
+              <span className="shrink-0 font-extrabold tabular-nums">PHP {money(aging["0-30"])}</span>
             </div>
             <div className="flex items-center justify-between">
               <span>31-60 days</span>
-              <span className="font-extrabold">PHP {money(aging["31-60"])}</span>
+              <span className="shrink-0 font-extrabold tabular-nums">PHP {money(aging["31-60"])}</span>
             </div>
             <div className="flex items-center justify-between">
               <span>61-90 days</span>
-              <span className="font-extrabold">PHP {money(aging["61-90"])}</span>
+              <span className="shrink-0 font-extrabold tabular-nums">PHP {money(aging["61-90"])}</span>
             </div>
             <div className="flex items-center justify-between">
               <span>90+ days</span>
-              <span className="font-extrabold">PHP {money(aging["90+"])}</span>
+              <span className="shrink-0 font-extrabold tabular-nums">PHP {money(aging["90+"])}</span>
             </div>
           </div>
         </div>

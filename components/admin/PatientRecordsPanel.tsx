@@ -290,12 +290,30 @@ function PatientDetailsModal({
   );
 }
 
-function PatientEditModal({
+export function PatientEditModal({
   patientId,
   onClose,
+  onSaved,
+  title = "Edit Patient Record",
+  subtitle = "Fields marked * are required.",
+  confirmOnSave = true,
+  confirmMessage = "Are you sure you want to proceed?",
+  inline = false,
+  initialEmail = "",
+  lockEmail = false,
+  onboardingMode = false,
 }: {
   patientId: string;
   onClose: () => void;
+  onSaved?: () => void;
+  title?: string;
+  subtitle?: string;
+  confirmOnSave?: boolean;
+  confirmMessage?: string;
+  inline?: boolean;
+  initialEmail?: string;
+  lockEmail?: boolean;
+  onboardingMode?: boolean;
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -309,14 +327,31 @@ function PatientEditModal({
     (async () => {
       const res = await getPatientRecord(patientId);
       if (!active) return;
-      if (res?.success) setForm(normalizeReg(res.data?.registration || null));
-      else setForm(normalizeReg(null));
+      const next = res?.success ? normalizeReg(res.data?.registration || null) : normalizeReg(null);
+      if (lockEmail && initialEmail) {
+        next.contact_information.email_address = initialEmail;
+      }
+      if (onboardingMode && !next.authorization.date_signed) {
+        next.authorization.date_signed = new Date().toISOString().slice(0, 10);
+      }
+      setForm(next);
       setLoading(false);
     })();
     return () => {
       active = false;
     };
-  }, [patientId]);
+  }, [patientId, initialEmail, lockEmail, onboardingMode]);
+
+  const calcAge = (birthdate: string) => {
+    if (!birthdate) return null;
+    const dob = new Date(`${birthdate}T00:00:00`);
+    if (Number.isNaN(dob.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age -= 1;
+    return age < 0 ? null : age;
+  };
 
   const validateRequired = () => {
     const p = form.personal_information;
@@ -327,6 +362,7 @@ function PatientEditModal({
     if (!p.birthdate.trim()) errs.push("Birthdate is required.");
     if (!c.home_address.trim()) errs.push("Home address is required.");
     if (!c.mobile_no.trim()) errs.push("Mobile number is required.");
+    if (!c.email_address.trim()) errs.push("Email address is required.");
     return errs;
   };
 
@@ -335,6 +371,10 @@ function PatientEditModal({
     if (errs.length) {
       setError(errs.join(" "));
       return;
+    }
+    if (confirmOnSave && typeof window !== "undefined") {
+      const ok = window.confirm(confirmMessage);
+      if (!ok) return;
     }
     setSaving(true);
     setError(null);
@@ -345,6 +385,7 @@ function PatientEditModal({
       return;
     }
     setSaving(false);
+    onSaved?.();
     onClose();
   };
 
@@ -353,27 +394,51 @@ function PatientEditModal({
   const m = form.medical_history;
   const sexValue = String(p.sex || "").toLowerCase();
   const showWomenOnly = sexValue === "female";
+  const currentLabelSm = onboardingMode
+    ? "text-[10px] font-extrabold uppercase tracking-wide text-slate-600"
+    : labelSm;
+  const currentSectionCard = onboardingMode
+    ? "rounded-xl border border-slate-200 bg-white p-3"
+    : sectionCard;
+  const currentInputBase = onboardingMode
+    ? "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-300"
+    : inputBase;
+  const headerTitleClass = onboardingMode
+    ? "text-base font-extrabold text-slate-900"
+    : "text-lg font-extrabold text-slate-900";
+  const headerSubtitleClass = onboardingMode
+    ? "text-xs text-slate-500"
+    : "text-sm text-slate-500";
+
+  const shellClass = inline
+    ? "w-full rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden"
+    : "w-full max-w-5xl rounded-2xl bg-white border border-slate-200 shadow-xl overflow-hidden";
+  const bodyHeightClass = inline
+    ? onboardingMode
+      ? "max-h-[52vh] sm:max-h-[56vh]"
+      : "max-h-[44vh] sm:max-h-[48vh]"
+    : "max-h-[80vh]";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-5xl rounded-2xl bg-white border border-slate-200 shadow-xl overflow-hidden">
+    <div className={inline ? "" : "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"}>
+      <div className={shellClass}>
         <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="text-lg font-extrabold text-slate-900">Edit Patient Record</h3>
-          <p className="text-sm text-slate-500">Fields marked * are required.</p>
+          <h3 className={headerTitleClass}>{title}</h3>
+          <p className={headerSubtitleClass}>{subtitle}</p>
         </div>
 
-        <div className="p-5 max-h-[80vh] overflow-y-auto space-y-4">
+        <div className={`p-5 overflow-y-auto space-y-4 ${bodyHeightClass}`}>
           {loading ? (
             <p className="text-sm text-slate-500">Loading...</p>
           ) : (
             <>
-              <div className={sectionCard}>
-                <p className={labelSm}>Personal Information</p>
+              <div className={currentSectionCard}>
+                <p className={currentLabelSm}>Personal Information</p>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
-                    <label className={labelSm}>First Name *</label>
+                    <label className={currentLabelSm}>First Name *</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={p.name.first_name}
                       onChange={(e) =>
                         setForm({
@@ -387,9 +452,9 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Last Name *</label>
+                    <label className={currentLabelSm}>Last Name *</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={p.name.last_name}
                       onChange={(e) =>
                         setForm({
@@ -403,9 +468,9 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Middle Initial</label>
+                    <label className={currentLabelSm}>Middle Initial</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={p.name.middle_initial}
                       onChange={(e) =>
                         setForm({
@@ -419,25 +484,30 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Birthdate *</label>
+                    <label className={currentLabelSm}>Birthdate *</label>
                     <input
                       type="date"
-                      className={inputBase}
+                      className={currentInputBase}
                       value={p.birthdate}
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          personal_information: { ...p, birthdate: e.target.value },
+                          personal_information: {
+                            ...p,
+                            birthdate: e.target.value,
+                            age: calcAge(e.target.value),
+                          },
                         })
                       }
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Age</label>
+                    <label className={currentLabelSm}>Age</label>
                     <input
                       type="number"
-                      className={inputBase}
+                      className={currentInputBase}
                       value={p.age ?? ""}
+                      readOnly={onboardingMode}
                       onChange={(e) =>
                         setForm({
                           ...form,
@@ -450,9 +520,9 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Sex</label>
+                    <label className={currentLabelSm}>Sex</label>
                     <select
-                      className={inputBase}
+                      className={currentInputBase}
                       value={p.sex}
                       onChange={(e) =>
                         setForm({
@@ -469,13 +539,13 @@ function PatientEditModal({
                 </div>
               </div>
 
-              <div className={sectionCard}>
-                <p className={labelSm}>Contact Details</p>
+              <div className={currentSectionCard}>
+                <p className={currentLabelSm}>Contact Details</p>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="md:col-span-2">
-                    <label className={labelSm}>Home Address *</label>
+                    <label className={currentLabelSm}>Home Address *</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={c.home_address}
                       onChange={(e) =>
                         setForm({
@@ -486,11 +556,11 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Mobile No *</label>
+                    <label className={currentLabelSm}>Mobile No *</label>
                     <input
                       type="tel"
                       inputMode="numeric"
-                      className={inputBase}
+                      className={currentInputBase}
                       value={c.mobile_no}
                       maxLength={11}
                       placeholder="+62-926 114-21xx"
@@ -503,10 +573,12 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Email</label>
+                    <label className={currentLabelSm}>Email *</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={c.email_address}
+                      disabled={lockEmail}
+                      readOnly={lockEmail}
                       onChange={(e) =>
                         setForm({
                           ...form,
@@ -515,29 +587,16 @@ function PatientEditModal({
                       }
                     />
                   </div>
-                  <div>
-                    <label className={labelSm}>Home No</label>
-                    <input
-                      className={inputBase}
-                      value={c.home_no}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          contact_information: { ...c, home_no: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
                 </div>
               </div>
 
-              <div className={sectionCard}>
-                <p className={labelSm}>Other Details</p>
+              <div className={currentSectionCard}>
+                <p className={currentLabelSm}>Other Details</p>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
-                    <label className={labelSm}>Occupation</label>
+                    <label className={currentLabelSm}>Occupation</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={form.employment_information.occupation}
                       onChange={(e) =>
                         setForm({
@@ -548,9 +607,9 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Previous Dentist</label>
+                    <label className={currentLabelSm}>Previous Dentist</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={form.dental_history.previous_dentist}
                       onChange={(e) =>
                         setForm({
@@ -561,9 +620,9 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Last Dental Visit</label>
+                    <label className={currentLabelSm}>Last Dental Visit</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={form.dental_history.last_dental_visit}
                       onChange={(e) =>
                         setForm({
@@ -576,7 +635,7 @@ function PatientEditModal({
                 </div>
                 {showWomenOnly && (
                   <div className="mt-4">
-                    <p className={labelSm}>Women Only</p>
+                    <p className={currentLabelSm}>Women Only</p>
                     <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-slate-700">
                       <label className="flex items-center gap-2">
                         <input
@@ -643,13 +702,13 @@ function PatientEditModal({
                 )}
               </div>
 
-              <div className={sectionCard}>
-                <p className={labelSm}>Vitals & Allergies</p>
+              <div className={currentSectionCard}>
+                <p className={currentLabelSm}>Vitals & Allergies</p>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
-                    <label className={labelSm}>Blood Type</label>
+                    <label className={currentLabelSm}>Blood Type</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={m.vitals.blood_type}
                       onChange={(e) =>
                         setForm({
@@ -660,9 +719,9 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Blood Pressure</label>
+                    <label className={currentLabelSm}>Blood Pressure</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={m.vitals.blood_pressure}
                       onChange={(e) =>
                         setForm({
@@ -673,9 +732,9 @@ function PatientEditModal({
                     />
                   </div>
                   <div>
-                    <label className={labelSm}>Bleeding Time</label>
+                    <label className={currentLabelSm}>Bleeding Time</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={m.vitals.bleeding_time}
                       onChange={(e) =>
                         setForm({
@@ -688,7 +747,7 @@ function PatientEditModal({
                 </div>
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className={labelSm}>Allergies (select)</label>
+                    <label className={currentLabelSm}>Allergies (select)</label>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700">
                       {[
                         ["local_anesthetic", "Local Anesthetic"],
@@ -718,9 +777,9 @@ function PatientEditModal({
                     </div>
                   </div>
                   <div>
-                    <label className={labelSm}>Other Allergies</label>
+                    <label className={currentLabelSm}>Other Allergies</label>
                     <input
-                      className={inputBase}
+                      className={currentInputBase}
                       value={m.allergies.others}
                       onChange={(e) =>
                         setForm({
@@ -732,9 +791,9 @@ function PatientEditModal({
                   </div>
                 </div>
                 <div className="mt-4">
-                  <label className={labelSm}>Conditions Checklist (comma-separated)</label>
+                  <label className={currentLabelSm}>Conditions Checklist (comma-separated)</label>
                   <input
-                    className={inputBase}
+                    className={currentInputBase}
                     value={m.conditions_checklist.join(", ")}
                     onChange={(e) =>
                       setForm({
@@ -746,8 +805,8 @@ function PatientEditModal({
                 </div>
               </div>
 
-              <div className={sectionCard}>
-                <p className={labelSm}>Authorization</p>
+              <div className={currentSectionCard}>
+                <p className={currentLabelSm}>Authorization</p>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
                   <label className="flex items-center gap-2 text-xs font-extrabold text-slate-600 uppercase tracking-widest">
                     <input
@@ -764,11 +823,13 @@ function PatientEditModal({
                     Signature Present
                   </label>
                   <div>
-                    <label className={labelSm}>Date Signed</label>
+                    <label className={currentLabelSm}>Date Signed</label>
                     <input
                       type="date"
-                      className={inputBase}
+                      className={currentInputBase}
                       value={form.authorization.date_signed}
+                      disabled={onboardingMode}
+                      readOnly={onboardingMode}
                       onChange={(e) =>
                         setForm({
                           ...form,

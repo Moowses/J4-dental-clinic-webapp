@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { getUserAppointments } from "@/lib/services/appointment-service";
 import { getPatientRecord } from "@/lib/services/patient-service";
 import { updatePatientRecordAction } from "@/app/actions/auth-actions";
-import { cancelAppointmentAction } from "@/app/actions/appointment-actions";
+import { cancelAppointmentAction, confirmAppointmentAction } from "@/app/actions/appointment-actions";
 import { getPatientTreatmentHistoryAction } from "@/app/actions/appointment-admin-actions";
 import { updateUserDocument } from "@/lib/services/user-service";
 import { updateUserProfile } from "@/lib/services/auth-service";
@@ -66,6 +66,7 @@ function AppointmentsTable({
   loading,
   onAddAppointment,
   onOpenModal,
+  onConfirm,
   onCancel,
   getCancelDisabledReason,
 }: {
@@ -73,6 +74,7 @@ function AppointmentsTable({
   loading: boolean;
   onAddAppointment: () => void;
   onOpenModal: (appt: Appointment, tab: AppointmentModalTab) => void;
+  onConfirm: (appt: Appointment) => void;
 
   onCancel: (appt: Appointment) => void;
   getCancelDisabledReason: (appt: Appointment) => string | null;
@@ -161,6 +163,7 @@ function AppointmentsTable({
                   appointment={appt}
                   onView={() => onOpenModal(appt, "details")}
                   onTransactions={() => onOpenModal(appt, "transactions")}
+                  onConfirm={() => onConfirm(appt)}
                   onCancel={() => onCancel(appt)}
                 />
               </div>
@@ -203,6 +206,7 @@ function AppointmentsTable({
                     appointment={appt}
                     onView={() => onOpenModal(appt, "details")}
                     onTransactions={() => onOpenModal(appt, "transactions")}
+                    onConfirm={() => onConfirm(appt)}
                     onCancel={() => onCancel(appt)}
                    
                   />
@@ -1101,6 +1105,25 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     }
   }
 
+  async function handleConfirmAppointment(appt: Appointment) {
+    const status = String((appt as any).status || "").toLowerCase();
+    if (status !== "pending") return;
+
+    const id = String((appt as any).id || "");
+    if (!id) return;
+
+    try {
+      const res = await confirmAppointmentAction(id);
+      if (!res?.success) {
+        alert(res?.error || "Failed to confirm appointment.");
+        return;
+      }
+      await refreshAppointments();
+    } catch (e: any) {
+      alert(e?.message || "Failed to confirm appointment.");
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-4">
@@ -1184,7 +1207,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                       : "text-slate-700 hover:bg-slate-50"
                   }`}
                 >
-                  Transactions
+                  Payment History
                 </button>
                 <button
                   type="button"
@@ -1282,6 +1305,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                 loading={historyLoading}
                 onAddAppointment={() => setOpenBooking(true)}
                 onOpenModal={openModal}
+                onConfirm={handleConfirmAppointment}
                 onCancel={handleCancelAppointment}
                 getCancelDisabledReason={getCancelDisabledReason}
               />
