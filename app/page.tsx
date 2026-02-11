@@ -32,7 +32,6 @@ function formatPeso(amount?: number | null) {
 }
 
 function ServiceCard({ title, desc, price, image }: Service) {
-  // Cloudinary optimization parameters
   const optimizedImage = image 
     ? image.replace('/upload/', '/upload/w_600,h_400,c_fill,g_auto,q_auto,f_auto/')
     : null;
@@ -81,13 +80,11 @@ function AutoScrollServicesSlider({ items }: { items: Service[] }) {
     });
   };
 
-  // Auto-scroll every 6 seconds (one card)
   useEffect(() => {
     const el = wrapRef.current;
     if (!el || paused || items.length === 0) return;
 
     const id = window.setInterval(() => {
-      // If near the end, loop back smoothly
       const nearEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10;
       if (nearEnd) {
         el.scrollTo({ left: 0, behavior: "smooth" });
@@ -109,7 +106,6 @@ function AutoScrollServicesSlider({ items }: { items: Service[] }) {
       onTouchStart={() => setPaused(true)}
       onTouchEnd={() => setPaused(false)}
     >
-      {/* Left Arrow */}
       <button
         type="button"
         onClick={() => scrollByOne("left")}
@@ -119,7 +115,6 @@ function AutoScrollServicesSlider({ items }: { items: Service[] }) {
         ‹
       </button>
 
-      {/* Right Arrow */}
       <button
         type="button"
         onClick={() => scrollByOne("right")}
@@ -145,7 +140,6 @@ function AutoScrollServicesSlider({ items }: { items: Service[] }) {
             key={`${s.title}-${idx}`}
             className="min-w-[280px] max-w-[280px] sm:min-w-[320px] sm:max-w-[320px]"
           >
-            {/* marker to measure card width */}
             <div data-slide-card="1">
               <ServiceCard {...s} />
             </div>
@@ -183,7 +177,6 @@ export default function HomePage() {
   const { user, loading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
 
-  // Services (procedures from admin, shown as services to patient)
   const [services, setServices] = useState<Service[]>([]);
   const [svcLoading, setSvcLoading] = useState(false);
   const [svcError, setSvcError] = useState<string | null>(null);
@@ -201,7 +194,6 @@ export default function HomePage() {
       setSvcLoading(true);
       setSvcError(null);
 
-      // Fetch from the actual public Services catalog (only active)
       const res = await getAllServicesAction(true);
       if (!res.success || !res.data) {
         setSvcError(res.error || "Failed to load services");
@@ -372,7 +364,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* SERVICES (procedures shown as services) */}
         <section
           id="services"
           className="scroll-mt-24 py-14 md:py-20 bg-slate-50/60"
