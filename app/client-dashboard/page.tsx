@@ -923,12 +923,10 @@ export default function ClientDashboardPage() {
     setPhotoUrl(user?.photoURL || null);
   }, [user?.photoURL]);
 
-  // Appointment modal state
   const [openApptModal, setOpenApptModal] = useState(false);
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [initialTab, setInitialTab] = useState<AppointmentModalTab>("details");
 
-  // Dentist profile state
 const [dentistName, setDentistName] = useState<string | null>(null);
 const [dentistLoading, setDentistLoading] = useState(false);
 const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({});
@@ -936,7 +934,6 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
 
 
   
-  // prevents loader loops + stale responses
   const reqIdRef = useRef(0);
 
   const refreshAppointments = useCallback(async () => {
@@ -950,7 +947,6 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
       if (reqIdRef.current !== myReq) return;
       if (res?.success) setAppointments(res.data || []);
     } catch {
-      // keep UI stable
     } finally {
       if (reqIdRef.current === myReq) setHistoryLoading(false);
     }
@@ -960,7 +956,6 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     if (!user?.uid) return;
     refreshAppointments();
   }, [user?.uid, refreshAppointments]);
-// Load dentist names for all appointments
   useEffect(() => {
   let cancelled = false;
 
@@ -1015,7 +1010,6 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     };
   }, [user?.uid]);
 
-  // Resolve dentist profile when selected appointment changes
  useEffect(() => {
   let mounted = true;
 

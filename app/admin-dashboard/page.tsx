@@ -28,8 +28,6 @@ import StaffAccountSettingsPanel from "@/components/admin/StaffAccountSettingsPa
 import DashboardAnalyticsPanel from "@/components/admin/DashboardAnalyticsPanel";
 import TreatmentRecordsPanel from "@/components/admin/TreatmentRecordsPanel";
 import DentistOverviewInsightsPanel from "@/components/admin/DentistOverviewInsightsPanel";
-
-// ✅ NEW
 import ClinicSettings from "@/components/admin/ClinicSettings";
 
 type TabKey =
@@ -44,7 +42,7 @@ type TabKey =
   | "staff"
   | "procedures"
   | "account-settings"
-  | "clinic-settings"; // ✅ NEW
+  | "clinic-settings";
 
 type ApptTab = "calendar" | "upcoming" | "unassigned";
 
@@ -62,7 +60,6 @@ export default function AdminDashboardPage() {
   const [apptTab, setApptTab] = useState<ApptTab>("calendar");
   const [activeBillingId, setActiveBillingId] = useState<string | null>(null);
 
-  // IMPORTANT: forces BillingOverview to refetch after modal updates/close
   const [billingRefreshKey, setBillingRefreshKey] = useState(0);
 
   const isAdmin = role === "admin";
@@ -76,7 +73,6 @@ export default function AdminDashboardPage() {
   const canSeeAnalytics = isAdmin;
   const canSeeTreatmentRecords = isAdmin || isDentist;
 
-  // ✅ NEW
   const canSeeClinicSettings = isAdmin || isFrontDesk;
 
   const showClinicOverview = isAdmin || isFrontDesk;
@@ -117,7 +113,6 @@ export default function AdminDashboardPage() {
       user,
     ]);
 
-  // Clinic overview metrics
   useEffect(() => {
     if (loading || !user) return;
     if (!showClinicOverview) return;
@@ -308,7 +303,6 @@ export default function AdminDashboardPage() {
     <div className="min-h-screen bg-[#f6f8fb]">
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
-          {/* Sidebar */}
           <aside className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 h-fit">
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
@@ -471,7 +465,6 @@ export default function AdminDashboardPage() {
                 </>
               )}
 
-              {/* ✅ NEW: Clinic Settings (Admin + Front Desk only) */}
                 {canSeeClinicSettings && (
                   <button
                     className={`w-full text-left px-4 py-3 rounded-xl font-extrabold ${
@@ -507,9 +500,7 @@ export default function AdminDashboardPage() {
             </div>
           </aside>
 
-          {/* Main */}
           <main className="space-y-6">
-            {/* Hero */}
             <section className="rounded-2xl overflow-hidden shadow-sm border border-slate-200">
               <div className="bg-gradient-to-r from-[#0f5f73] to-[#1aa4c7] px-6 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
                   <div className="flex items-center gap-4">
@@ -540,7 +531,6 @@ export default function AdminDashboardPage() {
               </div>
             </section>
 
-            {/* Dashboard */}
             {tab === "dashboard" && (
               <div className="space-y-6">
                 {showClinicOverview && (
@@ -657,7 +647,6 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            {/* Appointments */}
             {tab === "appointments" && canSeeAppointments && (
               <div className="space-y-6">
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
@@ -720,7 +709,6 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            {/* Billing */}
             {tab === "billing" && canSeeBilling && (
               <div className="space-y-6">
                 <BillingOverviewPanel
@@ -753,14 +741,12 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            {/* Reports */}
             {tab === "reports" && canSeeReports && (
               <div className="space-y-6">
                 <ReportsPanel />
               </div>
             )}
 
-            {/* Inventory */}
             {tab === "inventory" && canSeeInventory && (
               <div className="space-y-6">
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
@@ -775,7 +761,6 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-              {/*Clinic Settings */}
               {tab === "clinic-settings" && canSeeClinicSettings && (
                 <div className="space-y-6">
                   <ClinicSettings />
