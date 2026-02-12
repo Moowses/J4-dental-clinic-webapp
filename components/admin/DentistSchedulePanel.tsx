@@ -1621,7 +1621,10 @@ export default function DentistSchedulePanel() {
                   const status = String((app as any).status || "").trim() || "N/A";
                   const statusLower = status.toLowerCase();
                   const date = formatNiceDate(String((app as any).date || ""));
-                  const canTreat = statusLower !== "completed" && statusLower !== "cancelled";
+                  const canTreat =
+                    statusLower !== "completed" &&
+                    statusLower !== "cancelled" &&
+                    statusLower !== "no_show";
 
                   return (
                     <tr key={app.id} className="border-b border-slate-100 last:border-0 text-slate-700">
@@ -1787,7 +1790,11 @@ export default function DentistSchedulePanel() {
 
                         {(() => {
                           const status = String((app as any).status || "").toLowerCase();
-                          return status !== "completed" && status !== "cancelled";
+                          return (
+                            status !== "completed" &&
+                            status !== "cancelled" &&
+                            status !== "no_show"
+                          );
                         })() ? (
                           <button
                             onClick={() => {
@@ -1978,15 +1985,26 @@ export default function DentistSchedulePanel() {
                               {patientId} - {formatTime12h((app as any).time)} - {(app as any).serviceType}
                             </p>
                           </div>
-                          <button
-                            onClick={() => {
-                              setCalendarOpen(false);
-                              setActiveTreatment(app);
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-teal-700 text-white text-xs font-extrabold hover:bg-teal-800"
-                          >
-                            Treat Patient
-                          </button>
+                          {(() => {
+                            const status = String((app as any).status || "").toLowerCase();
+                            const canTreat =
+                              status !== "completed" &&
+                              status !== "cancelled" &&
+                              status !== "no_show";
+                            return canTreat ? (
+                              <button
+                                onClick={() => {
+                                  setCalendarOpen(false);
+                                  setActiveTreatment(app);
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-teal-700 text-white text-xs font-extrabold hover:bg-teal-800"
+                              >
+                                Treat Patient
+                              </button>
+                            ) : (
+                              <span className="text-xs font-extrabold text-slate-500">Unavailable</span>
+                            );
+                          })()}
                         </div>
                       );
                     })}

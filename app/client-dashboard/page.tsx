@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import NextImage from "next/image";
 import Link from "next/link";
@@ -289,7 +289,7 @@ function ActiveInstallmentsPanel({
         ? bill.paymentPlan.installments
         : [];
       const firstDesc = String(installments[0]?.description || "").trim();
-      if (firstDesc) return firstDesc.split(" • Installment")[0] || firstDesc;
+      if (firstDesc) return firstDesc.split(" â€¢ Installment")[0] || firstDesc;
 
       const appt = apptMap.get(String(bill.appointmentId || ""));
       return String(appt?.serviceType || "Installment Plan");
@@ -909,7 +909,7 @@ function ClientTreatmentHistoryModal({
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">Treatment Records</h3>
             <p className="text-sm text-slate-500">
-              {patientName ? `${patientName}` : "Patient"} {patientEmail ? `• ${patientEmail}` : ""}
+              {patientName ? `${patientName}` : "Patient"} {patientEmail ? `â€¢ ${patientEmail}` : ""}
             </p>
           </div>
           <button
@@ -946,7 +946,7 @@ function ClientTreatmentHistoryModal({
                   </div>
                 </div>
                 <p className="mt-2 text-[11px] text-slate-500">
-                  Highlighted teeth: {Array.from(chartHistory.keys()).join(", ") || "—"}
+                  Highlighted teeth: {Array.from(chartHistory.keys()).join(", ") || "â€”"}
                 </p>
 
                 <div className="mt-3 relative">
@@ -973,17 +973,17 @@ function ClientTreatmentHistoryModal({
                           const entries = key ? chartHistory.get(key) || [] : [];
                           return (
                             <div>
-                              <div>Tooth: {key || "—"}</div>
+                              <div>Tooth: {key || "â€”"}</div>
                               {entries.length ? (
                                 <div className="mt-1 space-y-1">
                                   {entries.map((e, idx) => (
                                     <div key={`${key}-${idx}`}>
                                       <div>{e.date}</div>
                                       <div>
-                                        Status: {e.status || "—"}
+                                        Status: {e.status || "â€”"}
                                         {isExtractedEntry(e) ? " (Extracted)" : ""}
                                       </div>
-                                      <div>Notes: {e.notes || "—"}</div>
+                                      <div>Notes: {e.notes || "â€”"}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -1012,7 +1012,7 @@ function ClientTreatmentHistoryModal({
                             {formatLabel(g)}
                           </p>
                           <p className="text-xs text-slate-500">
-                            Dentist: {g.dentistName || "—"}
+                            Dentist: {g.dentistName || "â€”"}
                           </p>
                         </div>
                       </div>
@@ -1115,6 +1115,7 @@ export default function ClientDashboardPage() {
 
   const [openApptModal, setOpenApptModal] = useState(false);
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
+  const [selectedBillingRecord, setSelectedBillingRecord] = useState<BillingRecord | null>(null);
   const [initialTab, setInitialTab] = useState<AppointmentModalTab>("details");
 
 const [dentistName, setDentistName] = useState<string | null>(null);
@@ -1262,6 +1263,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
 
   function openModal(appt: Appointment, tab: AppointmentModalTab) {
     setSelectedAppt(appt);
+    setSelectedBillingRecord(null);
     setInitialTab(tab);
     setOpenApptModal(true);
   }
@@ -1296,7 +1298,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     }
 
     if (diffHours <= 3) {
-      return "You can’t cancel your appointment 3 hours before your appointment. Please call front desk about this.";
+      return "You canâ€™t cancel your appointment 3 hours before your appointment. Please call front desk about this.";
     }
 
     return null;
@@ -1568,7 +1570,12 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                     appointments={appointments}
                     billingRecords={billingRecords}
                     dentistNameMap={dentistNameMap}
-                    onOpenModal={(appt) => openModal(appt, "details")}
+                    onOpenModal={(appt, bill) => {
+                      setSelectedAppt(appt);
+                      setSelectedBillingRecord(bill);
+                      setInitialTab("transactions");
+                      setOpenApptModal(true);
+                    }}
                   />
                 ) : (
                   <ActiveInstallmentsPanel
@@ -1602,8 +1609,12 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
 
       <AppointmentDetailsModal
         open={openApptModal}
-        onClose={() => setOpenApptModal(false)}
+        onClose={() => {
+          setOpenApptModal(false);
+          setSelectedBillingRecord(null);
+        }}
         appointment={selectedAppt}
+        billingRecord={selectedBillingRecord}
         dentistProfile={dentistName ? { uid: (selectedAppt as any)?.dentistId || "", displayName: dentistName } : null}
         dentistLoading={dentistLoading}
         brandColor={BRAND}
@@ -1632,3 +1643,6 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     </main>
   );
 }
+
+
+

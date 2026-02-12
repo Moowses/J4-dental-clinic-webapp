@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { Appointment } from "@/lib/types/appointment";
 import type { BillingRecord } from "@/lib/types/billing";
@@ -36,6 +36,7 @@ function toDate(value: unknown): Date | null {
 type HistoryRow = {
   id: string;
   appointmentId: string;
+  billKey: string;
   dateText: string;
   sortMs: number;
   procedureLabel: string;
@@ -68,7 +69,7 @@ export default function TransactionsTable({
 }: {
   appointments: Appointment[];
   billingRecords: BillingRecord[];
-  onOpenModal: (appt: Appointment) => void;
+  onOpenModal: (appt: Appointment, bill: BillingRecord) => void;
   dentistNameMap: Record<string, string>;
 }) {
   const apptMap = new Map<string, Appointment>();
@@ -108,11 +109,7 @@ export default function TransactionsTable({
       });
 
       const txns = Array.isArray(bill?.transactions) ? bill.transactions : [];
-      const txnsWithTime = txns.map((tx: TxRow, idx) => ({
-        tx,
-        idx,
-        ms: toDate(tx?.date)?.getTime() || 0,
-      }));
+      const txnsWithTime = txns.map((tx: TxRow, idx) => ({ tx, idx, ms: toDate(tx?.date)?.getTime() || 0 }));
       const latestTxn = txnsWithTime.sort((a, b) => b.ms - a.ms || b.idx - a.idx)[0]?.tx;
       const billIsPaid = String(bill?.status || "").toLowerCase() === "paid";
 
@@ -131,22 +128,20 @@ export default function TransactionsTable({
           ? `${inst.description} ${inst.idx} of ${totalTerms || "?"}`
           : procedureName;
 
-        const statusText = shouldShowPaid ? "Paid" : "Partial";
-        const statusClass = shouldShowPaid
-          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-          : "bg-amber-50 text-amber-700 border-amber-200";
-
         return {
           id: `${apptId}-${String(tx?.id || Math.random())}`,
           appointmentId: apptId,
-          dateText: txDate ? txDate.toLocaleDateString() : "—",
+          billKey: String(bill?.id || bill?.appointmentId || apptId),
+          dateText: txDate ? txDate.toLocaleDateString() : "-",
           sortMs: txDate?.getTime() || 0,
           procedureLabel,
           dentist,
           amount: Number(tx?.amount || 0),
           paymentText: String(tx?.method || "cash").toUpperCase(),
-          statusText,
-          statusClass,
+          statusText: shouldShowPaid ? "Paid" : "Partial",
+          statusClass: shouldShowPaid
+            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+            : "bg-amber-50 text-amber-700 border-amber-200",
         } satisfies HistoryRow;
       });
     })
@@ -164,9 +159,7 @@ export default function TransactionsTable({
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="border-b border-slate-100 px-6 py-4">
         <h3 className="text-lg font-extrabold text-slate-900">Payment History</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Installment and full-payment records (latest first).
-        </p>
+        <p className="mt-1 text-xs text-slate-500">Installment and full-payment records (latest first).</p>
       </div>
 
       <div className="overflow-x-auto">
@@ -181,14 +174,16 @@ export default function TransactionsTable({
               <th className="px-6 py-3">Status</th>
             </tr>
           </thead>
-
           <tbody className="divide-y divide-slate-100">
             {historyRows.map((row) => {
               const appt = apptMap.get(row.appointmentId);
+              const bill = (billingRecords || []).find(
+                (b) => String(b?.id || b?.appointmentId || "") === row.billKey
+              );
               return (
                 <tr
                   key={row.id}
-                  onClick={() => (appt ? onOpenModal(appt) : undefined)}
+                  onClick={() => (appt && bill ? onOpenModal(appt, bill) : undefined)}
                   className={`transition ${appt ? "cursor-pointer hover:bg-slate-50" : ""}`}
                 >
                   <td className="px-6 py-4 text-slate-700">{row.dateText}</td>
@@ -197,9 +192,7 @@ export default function TransactionsTable({
                   <td className="px-6 py-4 font-extrabold text-slate-900">{money(row.amount)}</td>
                   <td className="px-6 py-4 font-semibold text-slate-900">{row.paymentText}</td>
                   <td className="px-6 py-4">
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-bold uppercase ${row.statusClass}`}
-                    >
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-bold uppercase ${row.statusClass}`}>
                       {row.statusText}
                     </span>
                   </td>
@@ -212,3 +205,4 @@ export default function TransactionsTable({
     </div>
   );
 }
+
