@@ -769,7 +769,7 @@ function ClientTreatmentHistoryModal({
                 </p>
 
                 <div className="mt-3 relative">
-                  <div className="opacity-90">
+                  <div className="pointer-events-none opacity-90">
                     <Odontogram
                       key={`combined-extracted-${extractedSelected.join(",")}`}
                       defaultSelected={extractedSelected}
@@ -779,7 +779,7 @@ function ClientTreatmentHistoryModal({
                       showTooltip={false}
                     />
                   </div>
-                  <div className="absolute inset-0">
+                  <div className="pointer-events-none absolute inset-0">
                     <Odontogram
                       key={`combined-notes-${notedSelected.join(",")}`}
                       defaultSelected={notedSelected}

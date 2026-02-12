@@ -95,18 +95,39 @@ export async function updateTreatmentExtrasAdmin(
       return { success: false, error: "Treatment record not found" };
     }
 
-    const nextTreatment = {
-      ...data.treatment,
-      notes: typeof updates.notes === "string" ? updates.notes : data.treatment.notes,
-      imageUrls: Array.isArray(updates.imageUrls)
-        ? updates.imageUrls
-        : data.treatment.imageUrls,
-      dentalChart: updates.dentalChartPatch
-        ? { ...(data.treatment.dentalChart || {}), ...updates.dentalChartPatch }
-        : data.treatment.dentalChart,
-    };
+    const patch: Record<string, unknown> = {};
 
-    await docRef.update({ treatment: nextTreatment });
+    if (typeof updates.notes === "string") {
+      patch["treatment.notes"] = updates.notes;
+    }
+
+    if (Array.isArray(updates.imageUrls)) {
+      patch["treatment.imageUrls"] = updates.imageUrls;
+    }
+
+    if (updates.dentalChartPatch && typeof updates.dentalChartPatch === "object") {
+      const cleanedChartPatch: Record<string, { status?: string; notes?: string; updatedAt?: number; updatedBy?: string }> = {};
+      for (const [key, value] of Object.entries(updates.dentalChartPatch)) {
+        if (!key || !value || typeof value !== "object") continue;
+        cleanedChartPatch[key] = {
+          ...(typeof value.status === "string" ? { status: value.status } : {}),
+          ...(typeof value.notes === "string" ? { notes: value.notes } : {}),
+          ...(typeof value.updatedAt === "number" ? { updatedAt: value.updatedAt } : {}),
+          ...(typeof value.updatedBy === "string" ? { updatedBy: value.updatedBy } : {}),
+        };
+      }
+
+      patch["treatment.dentalChart"] = {
+        ...(data.treatment.dentalChart || {}),
+        ...cleanedChartPatch,
+      };
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return { success: true };
+    }
+
+    await docRef.update(patch);
 
     return { success: true };
   } catch (error) {

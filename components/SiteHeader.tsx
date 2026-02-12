@@ -15,11 +15,16 @@ export default function SiteHeader() {
 
   const [authOpen, setAuthOpen] = useState(false);
   const [authTab, setAuthTab] = useState<"login" | "signup">("login");
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // When modal closes, re-check auth state (covers successful login via modal)
   useEffect(() => {
     if (!authOpen) router.refresh();
   }, [authOpen, router]);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [user]);
 
   const handleLogout = async () => {
     try {
@@ -73,7 +78,7 @@ export default function SiteHeader() {
                   <>
                     <Link
                       href="/client-dashboard"
-                      className="hidden rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95 sm:inline-flex"
+                      className="hidden rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95 md:inline-flex"
                       style={{ backgroundColor: BRAND }}
                     >
                       Account
@@ -81,7 +86,7 @@ export default function SiteHeader() {
 
                     <button
                       onClick={handleLogout}
-                      className="inline-flex rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+                      className="hidden rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50 md:inline-flex"
                     >
                       Logout
                     </button>
@@ -95,7 +100,7 @@ export default function SiteHeader() {
                         setAuthTab("login");
                         setAuthOpen(true);
                       }}
-                      className="inline-flex rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+                      className="hidden rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50 md:inline-flex"
                     >
                       Log in
                     </button>
@@ -105,7 +110,7 @@ export default function SiteHeader() {
                         setAuthTab("signup");
                         setAuthOpen(true);
                       }}
-                      className="inline-flex rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95"
+                      className="hidden rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95 md:inline-flex"
                       style={{ backgroundColor: BRAND }}
                     >
                       Sign up
@@ -113,14 +118,98 @@ export default function SiteHeader() {
                   </>
                 )}
 
-                <Link
-                  href="/menu"
+                <button
+                  type="button"
+                  onClick={() => setMobileOpen((prev) => !prev)}
+                  aria-label={mobileOpen ? "Close menu" : "Open menu"}
                   className="inline-flex rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 md:hidden"
                 >
-                  Menu
-                </Link>
+                  {mobileOpen ? "Close" : "Menu"}
+                </button>
               </div>
             </div>
+
+            {mobileOpen && (
+              <div className="border-t border-slate-100 py-3 md:hidden">
+                <div className="grid gap-2">
+                  <Link
+                    href="/about"
+                    onClick={() => setMobileOpen(false)}
+                    className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    About Us
+                  </Link>
+                  <Link
+                    href="/services"
+                    onClick={() => setMobileOpen(false)}
+                    className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Services
+                  </Link>
+                  <Link
+                    href="/contact"
+                    onClick={() => setMobileOpen(false)}
+                    className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Contact Us
+                  </Link>
+
+                  <div className="my-1 border-t border-slate-100" />
+
+                  {!loading && user && (
+                    <>
+                      <Link
+                        href="/client-dashboard"
+                        onClick={() => setMobileOpen(false)}
+                        className="rounded-xl px-3 py-2 text-sm font-semibold text-white"
+                        style={{ backgroundColor: BRAND }}
+                      >
+                        Account
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileOpen(false);
+                          handleLogout();
+                        }}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                      >
+                        Logout
+                      </button>
+                    </>
+                  )}
+
+                  {!loading && !user && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileOpen(false);
+                          setAuthTab("login");
+                          setAuthOpen(true);
+                        }}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                      >
+                        Log in
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileOpen(false);
+                          setAuthTab("signup");
+                          setAuthOpen(true);
+                        }}
+                        className="rounded-xl px-3 py-2 text-left text-sm font-semibold text-white"
+                        style={{ backgroundColor: BRAND }}
+                      >
+                        Sign up
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>

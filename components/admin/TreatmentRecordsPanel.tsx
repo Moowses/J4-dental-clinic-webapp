@@ -1,17 +1,35 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { getPatientListAction } from "@/app/actions/patient-actions";
-import { getPatientTreatmentHistoryAction } from "@/app/actions/appointment-admin-actions";
+import {
+  getPatientTreatmentHistoryAction,
+  updatePatientDentalChartAction,
+  updateTreatmentNotesAction,
+} from "@/app/actions/appointment-admin-actions";
 import { searchPatients, getUserDisplayNameByUid } from "@/lib/services/user-service";
 import { auth } from "@/lib/firebase/firebase";
+import { useAuth } from "@/lib/hooks/useAuth";
 import { Odontogram } from "react-odontogram";
 
 import type { UserProfile } from "@/lib/types/user";
 
 const inputBase =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-300";
+
+type TreatmentGroup = {
+  appointmentId: string;
+  dentistId?: string | null;
+  dentistName?: string | null;
+  date?: string;
+  time?: string;
+  completedAt?: any;
+  notes?: string;
+  procedures?: Array<{ name?: string; toothNumber?: string; price?: number | null }>;
+  imageUrls?: string[];
+  dentalChart?: Record<string, { status?: string; notes?: string }>;
+};
 
 function Card({
   title,
@@ -110,6 +128,14 @@ function payloadToUniversal(payload: any) {
   return String(raw);
 }
 
+function toothToUniversal(tooth: any) {
+  return (
+    tooth?.notations?.universal ||
+    tooth?.notations?.fdi ||
+    String(tooth?.id || "").replace("teeth-", "")
+  );
+}
+
 function keyToUniversal(key: string) {
   const raw = String(key || "").trim();
   if (!raw) return null;
@@ -131,33 +157,291 @@ function keyToUniversal(key: string) {
   return null;
 }
 
+function normalizeTooth(raw: string) {
+  const n = Number(String(raw || "").trim());
+  if (!Number.isFinite(n)) return null;
+  if (n >= 1 && n <= 32) return String(n);
+  if (n >= 11 && n <= 48) {
+    const uni = fdiToUniversal(n);
+    return uni ? String(uni) : null;
+  }
+  return null;
+}
+
+function TreatmentEntryModal({
+  group,
+  canEdit,
+  canEditChart,
+  onClose,
+  onNotesUpdated,
+  onChartUpdated,
+}: {
+  group: TreatmentGroup;
+  canEdit: boolean;
+  canEditChart: boolean;
+  onClose: () => void;
+  onNotesUpdated: (appointmentId: string, notes: string) => void;
+  onChartUpdated: (appointmentId: string, toothUniversal: string, status: string, notes: string) => void;
+}) {
+  const [notes, setNotes] = useState(String(group.notes || ""));
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [toothNumber, setToothNumber] = useState("");
+  const [chartStatus, setChartStatus] = useState("");
+  const [chartNotes, setChartNotes] = useState("");
+  const [savingChart, setSavingChart] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const pendingPickRef = useRef<number | null>(null);
+
+  const chart = group.dentalChart || {};
+  const getEntryByUniversal = (uni: string) => {
+    const normalized = String(uni || "").trim();
+    if (!normalized) return null;
+    for (const [raw, entry] of Object.entries(chart)) {
+      if (keyToUniversal(raw) === normalized) {
+        return (entry as any) || null;
+      }
+    }
+    return null;
+  };
+  const extractedSet = new Set<string>();
+  const notedSet = new Set<string>();
+  Object.entries(chart).forEach(([raw, entry]) => {
+    const uni = keyToUniversal(raw);
+    if (!uni) return;
+    const toothId = keyToToothId(uni);
+    if (!toothId) return;
+    const s = String((entry as any)?.status || "").toLowerCase();
+    const n = String((entry as any)?.notes || "").toLowerCase();
+    const isExtracted =
+      s.includes("extract") || s.includes("removed") || s.includes("denture") || n.includes("extract") || n.includes("removed") || n.includes("denture");
+    if (isExtracted) extractedSet.add(toothId);
+    else if (String((entry as any)?.status || "").trim() || String((entry as any)?.notes || "").trim()) notedSet.add(toothId);
+  });
+
+  const saveNotes = async () => {
+    if (!canEdit) return;
+    setMsg(null);
+    const user = auth.currentUser;
+    const idToken = user ? await user.getIdToken() : "";
+    if (!idToken) {
+      setMsg("Unauthorized.");
+      return;
+    }
+    setSavingNotes(true);
+    try {
+      const res = await updateTreatmentNotesAction({
+        appointmentId: group.appointmentId,
+        idToken,
+        notes,
+      });
+      if (!res?.success) {
+        setMsg(res?.error || "Failed to save notes.");
+        return;
+      }
+      onNotesUpdated(group.appointmentId, notes);
+      setMsg("Notes updated.");
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  const saveChart = async () => {
+    if (!canEditChart) return;
+    setMsg(null);
+    const user = auth.currentUser;
+    const idToken = user ? await user.getIdToken() : "";
+    if (!idToken) {
+      setMsg("Unauthorized.");
+      return;
+    }
+    const toothUniversal = normalizeTooth(toothNumber);
+    if (!toothUniversal) {
+      setMsg("Please enter a valid tooth number.");
+      return;
+    }
+    setSavingChart(true);
+    try {
+      const patch = {
+        [toothUniversal]: {
+          status: chartStatus.trim(),
+          notes: chartNotes.trim(),
+          updatedAt: Date.now(),
+          updatedBy: user?.uid || "",
+        },
+      };
+      const res = await updatePatientDentalChartAction({
+        appointmentId: group.appointmentId,
+        idToken,
+        dentalChartPatch: patch,
+      });
+      if (!res?.success) {
+        setMsg(res?.error || "Failed to update chart.");
+        return;
+      }
+      onChartUpdated(group.appointmentId, toothUniversal, chartStatus.trim(), chartNotes.trim());
+      setToothNumber("");
+      setChartStatus("");
+      setChartNotes("");
+      setMsg("Dental chart updated.");
+    } finally {
+      setSavingChart(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pendingPickRef.current) {
+        window.clearTimeout(pendingPickRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div>
+            <h4 className="text-base font-extrabold text-slate-900">Treatment Record Details</h4>
+            <p className="text-xs text-slate-500">
+              {group.date || "—"} {group.time || ""} • Dentist: {group.dentistName || "—"}
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700">Close</button>
+        </div>
+        <div className="space-y-4 p-5">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+            Showing only the note for this treatment only
+          </div>
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-xs font-extrabold uppercase tracking-widest text-slate-600">Dental Chart</p>
+            <div className="mt-3 relative">
+              <div className="opacity-90">
+                <Odontogram
+                  key={`entry-extract-${group.appointmentId}-${Array.from(extractedSet).join(",")}`}
+                  defaultSelected={Array.from(extractedSet)}
+                  theme="light"
+                  colors={{ lightBlue: "#0f172a", darkBlue: "#0f172a", baseBlue: "#0f172a" }}
+                  showTooltip={false}
+                  tooltip={{ content: () => null }}
+                />
+              </div>
+              <div className="absolute inset-0">
+                <Odontogram
+                  key={`entry-noted-${group.appointmentId}-${Array.from(notedSet).join(",")}`}
+                  defaultSelected={Array.from(notedSet)}
+                  theme="light"
+                  colors={{ lightBlue: "#fbbf24", darkBlue: "#f59e0b", baseBlue: "#fde68a" }}
+                  showTooltip
+                  tooltip={{
+                    content: (payload: any) => {
+                      const key = payloadToUniversal(payload);
+                      const item = key ? (chart[key] || chart[`teeth-${key}`]) : null;
+                      return (
+                        <div>
+                          <div>Tooth: {key || "—"}</div>
+                          <div>Status: {String((item as any)?.status || "—")}</div>
+                          <div>Notes: {String((item as any)?.notes || "—")}</div>
+                        </div>
+                      );
+                    },
+                  }}
+                  onChange={(next: any) => {
+                    const list = Array.isArray(next) ? next : [];
+                    if (!list.length) return;
+                    const picked = list[list.length - 1];
+                    const uniRaw = String(toothToUniversal(picked) || "").trim();
+                    const uni = keyToUniversal(uniRaw) || keyToUniversal(`teeth-${uniRaw}`) || uniRaw;
+                    if (!uni) return;
+                    if (pendingPickRef.current) {
+                      window.clearTimeout(pendingPickRef.current);
+                    }
+                    pendingPickRef.current = window.setTimeout(() => {
+                      const entry = getEntryByUniversal(uni);
+                      setToothNumber(uni);
+                      setChartStatus(String((entry as any)?.status || ""));
+                      setChartNotes(String((entry as any)?.notes || ""));
+                    }, 0);
+                  }}
+                />
+              </div>
+            </div>
+
+            {canEditChart && (
+              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-5">
+                <input value={toothNumber} onChange={(e) => setToothNumber(e.target.value)} placeholder="Tooth # (1-32 or FDI)" className="rounded-lg border border-slate-200 px-2.5 py-2 text-xs" />
+                <input value={chartStatus} onChange={(e) => setChartStatus(e.target.value)} placeholder="Status" className="rounded-lg border border-slate-200 px-2.5 py-2 text-xs" />
+                <input value={chartNotes} onChange={(e) => setChartNotes(e.target.value)} placeholder="Notes" className="rounded-lg border border-slate-200 px-2.5 py-2 text-xs" />
+                <button onClick={saveChart} disabled={savingChart} className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-60">
+                  {savingChart ? "Saving..." : "Save Chart Edit"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!toothNumber.trim()) return;
+                    setChartStatus("");
+                    setChartNotes("");
+                  }}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-700"
+                >
+                  Clear Tooth Note
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-xs font-extrabold uppercase tracking-widest text-slate-600">Notes</p>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} readOnly={!canEdit} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+            {canEdit && (
+              <div className="mt-2 flex justify-end">
+                <button onClick={saveNotes} disabled={savingNotes} className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-60">
+                  {savingNotes ? "Saving..." : "Save Notes"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-xs font-extrabold uppercase tracking-widest text-slate-600">Attachments</p>
+            {group.imageUrls && group.imageUrls.length ? (
+              <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {group.imageUrls.map((url, idx) => (
+                  <a key={`${group.appointmentId}-a-${idx}`} href={url} target="_blank" rel="noreferrer" className="block">
+                    <img src={url} alt={`Attachment ${idx + 1}`} className="h-24 w-full rounded-xl border border-slate-200 object-cover" />
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">No attachments.</p>
+            )}
+          </div>
+
+          {msg ? <p className="text-xs font-semibold text-slate-700">{msg}</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TreatmentHistoryModal({
   patientId,
   patientName,
   patientEmail,
+  canEdit,
+  canEditChart,
   onClose,
 }: {
   patientId: string;
   patientName?: string | null;
   patientEmail?: string | null;
+  canEdit: boolean;
+  canEditChart: boolean;
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(true);
-  const [groups, setGroups] = useState<
-    Array<{
-      appointmentId: string;
-      dentistId?: string | null;
-      dentistName?: string | null;
-      date?: string;
-      time?: string;
-      completedAt?: any;
-      notes?: string;
-      procedures?: Array<{ name?: string; toothNumber?: string; price?: number | null }>;
-      imageUrls?: string[];
-      dentalChart?: Record<string, { status?: string; notes?: string }>;
-    }>
-  >([]);
+  const [groups, setGroups] = useState<TreatmentGroup[]>([]);
   const [openAttachments, setOpenAttachments] = useState<Record<string, boolean>>({});
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -282,6 +566,8 @@ function TreatmentHistoryModal({
 
   const notedSelected = Array.from(notedSet);
   const extractedSelected = Array.from(extractedSet);
+  const activeGroup = groups.find((g) => g.appointmentId === activeGroupId) || null;
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -456,6 +742,16 @@ function TreatmentHistoryModal({
                           ) : null}
                         </div>
                       ) : null}
+
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setActiveGroupId(g.appointmentId)}
+                          className="rounded-xl bg-teal-700 px-3 py-2 text-xs font-extrabold text-white hover:bg-teal-800"
+                        >
+                          {canEdit || canEditChart ? "Edit Record" : "View Record"}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -463,12 +759,67 @@ function TreatmentHistoryModal({
             </div>
           )}
         </div>
+        {activeGroup ? (
+          <TreatmentEntryModal
+            group={activeGroup}
+            canEdit={canEdit}
+            canEditChart={canEditChart}
+            onClose={() => setActiveGroupId(null)}
+            onNotesUpdated={(appointmentId, notes) => {
+              setGroups((prev) => prev.map((g) => (g.appointmentId === appointmentId ? { ...g, notes } : g)));
+            }}
+            onChartUpdated={(appointmentId, toothUniversal, status, notes) => {
+              setGroups((prev) =>
+                prev.map((g) =>
+                  g.appointmentId === appointmentId
+                    ? {
+                        ...g,
+                        dentalChart: {
+                          ...(g.dentalChart || {}),
+                          [toothUniversal]: { status, notes },
+                        },
+                      }
+                    : g
+                )
+              );
+            }}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function IncompleteRecordModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white shadow-xl">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h3 className="text-base font-extrabold text-slate-900">Incomplete Record</h3>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm text-slate-700">
+            This record needs to be completed. Please refer to front desk to fill out and verify this record.
+          </p>
+        </div>
+        <div className="border-t border-slate-100 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 export default function TreatmentRecordsPanel() {
+  const { role } = useAuth();
+  const canEdit = role === "admin" || role === "dentist";
+  const canEditChart = role === "dentist";
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -480,6 +831,9 @@ export default function TreatmentRecordsPanel() {
   const [treatmentUid, setTreatmentUid] = useState<string | null>(null);
   const [treatmentName, setTreatmentName] = useState<string | null>(null);
   const [treatmentEmail, setTreatmentEmail] = useState<string | null>(null);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   useEffect(() => {
     setDirLoading(true);
@@ -507,9 +861,27 @@ export default function TreatmentRecordsPanel() {
   }, [searchQuery]);
 
   const tableRows = useMemo(() => {
-    if (searchQuery.trim()) return searchResults;
-    return directory;
+    const rows = searchQuery.trim() ? searchResults : directory;
+    return [...rows].sort((a, b) => {
+      const aHasName = Boolean(String(a.displayName || "").trim());
+      const bHasName = Boolean(String(b.displayName || "").trim());
+      if (aHasName !== bHasName) return aHasName ? -1 : 1;
+      const aName = String(a.displayName || a.email || "").toLowerCase();
+      const bName = String(b.displayName || b.email || "").toLowerCase();
+      return aName.localeCompare(bName);
+    });
   }, [searchQuery, searchResults, directory]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, tableRows.length]);
+
+  const totalPages = Math.max(1, Math.ceil(tableRows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return tableRows.slice(start, start + pageSize);
+  }, [tableRows, currentPage]);
 
   return (
     <Card title="Treatment Records" subtitle="View patient treatment history, charts, and attachments">
@@ -581,7 +953,7 @@ export default function TreatmentRecordsPanel() {
                     </td>
                   </tr>
                 ) : (
-                  tableRows.map((u) => (
+                  pagedRows.map((u) => (
                     <tr key={u.uid} className="border-t border-slate-100">
                       <td className="p-3">
                         <div className="font-bold text-slate-900">{u.displayName || "No Name"}</div>
@@ -592,13 +964,18 @@ export default function TreatmentRecordsPanel() {
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => {
+                              const hasName = Boolean(String(u.displayName || "").trim());
+                              if (!hasName) {
+                                setShowIncompleteModal(true);
+                                return;
+                              }
                               setTreatmentUid(u.uid);
                               setTreatmentName(u.displayName || u.email || null);
                               setTreatmentEmail(u.email || null);
                             }}
                             className="px-3 py-2 rounded-xl bg-teal-700 text-white font-extrabold text-xs hover:bg-teal-800"
                           >
-                            View
+                            {canEdit ? "View / Edit" : "View"}
                           </button>
                         </div>
                       </td>
@@ -608,6 +985,32 @@ export default function TreatmentRecordsPanel() {
               </tbody>
             </table>
           </div>
+
+          {tableRows.length > pageSize && (
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-slate-500">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
 
           {searchQuery.trim() && (
             <button
@@ -628,12 +1031,17 @@ export default function TreatmentRecordsPanel() {
             patientId={treatmentUid}
             patientName={treatmentName}
             patientEmail={treatmentEmail}
+            canEdit={canEdit}
+            canEditChart={canEditChart}
             onClose={() => {
               setTreatmentUid(null);
               setTreatmentName(null);
               setTreatmentEmail(null);
             }}
           />
+        )}
+        {showIncompleteModal && (
+          <IncompleteRecordModal onClose={() => setShowIncompleteModal(false)} />
         )}
       </div>
     </Card>

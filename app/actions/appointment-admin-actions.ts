@@ -335,3 +335,22 @@ export async function updatePatientDentalChartAction(input: {
     dentalChartPatch: input.dentalChartPatch,
   });
 }
+
+export async function updateTreatmentNotesAction(input: {
+  appointmentId: string;
+  idToken: string;
+  notes: string;
+}): Promise<{ success: boolean; error?: string }> {
+  if (!input?.appointmentId || !input?.idToken) {
+    return { success: false, error: "Missing required fields" };
+  }
+
+  const role = await getUserRoleFromToken(input.idToken);
+  if (role !== "admin" && role !== "dentist") {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  return await updateTreatmentExtrasAdmin(input.appointmentId, {
+    notes: typeof input.notes === "string" ? input.notes : "",
+  });
+}

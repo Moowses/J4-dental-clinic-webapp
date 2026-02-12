@@ -878,6 +878,8 @@ export default function PatientRecordsPanel() {
 
   const [viewingUid, setViewingUid] = useState<string | null>(null);
   const [editingUid, setEditingUid] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   useEffect(() => {
     setDirLoading(true);
@@ -939,6 +941,17 @@ export default function PatientRecordsPanel() {
       return wantRegistered ? isReg : !isReg;
     });
   }, [searchQuery, searchResults, directory, filter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, filter, tableRows.length]);
+
+  const totalPages = Math.max(1, Math.ceil(tableRows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return tableRows.slice(start, start + pageSize);
+  }, [tableRows, currentPage]);
 
 
   return (
@@ -1026,7 +1039,7 @@ export default function PatientRecordsPanel() {
                       </td>
                     </tr>
                   ) : (
-                    tableRows.map((u) => (
+                    pagedRows.map((u) => (
                       <tr key={u.uid} className="border-t border-slate-100">
                         <td className="p-3 text-slate-600 font-mono">
                           {patientIdMap[u.uid] || "—"}
@@ -1058,6 +1071,32 @@ export default function PatientRecordsPanel() {
               </tbody>
             </table>
           </div>
+
+          {tableRows.length > pageSize && (
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-slate-500">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
 
           {searchQuery.trim() && (
             <button
