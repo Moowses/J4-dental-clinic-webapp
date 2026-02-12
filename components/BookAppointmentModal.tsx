@@ -137,6 +137,7 @@ export default function BookAppointmentModal({
   const [procedures, setProcedures] = useState<DentalProcedure[]>([]);
   const [procLoading, setProcLoading] = useState(false);
   const [procError, setProcError] = useState("");
+  const [mobileStep, setMobileStep] = useState<1 | 2>(1);
 
   // Load availability on date change
   useEffect(() => {
@@ -173,11 +174,13 @@ export default function BookAppointmentModal({
       setClientError("");
       setViewDate(startOfDay(new Date()));
       setProcError("");
+      setMobileStep(1);
       return;
     }
 
     successHandledRef.current = false;
     setClientError("");
+    setMobileStep(1);
 
     // auto-fill name on open
     setFullName(user?.displayName || "");
@@ -239,17 +242,21 @@ export default function BookAppointmentModal({
     !isPending &&
     !taken.has(selectedTime) &&
     (!procError && !procLoading);
+  const canProceedToDetails = !!selectedDate && !!selectedTime && !isHoliday;
 
   const goPrevMonth = () => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
   const goNextMonth = () => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+      <div className="w-full max-w-5xl max-h-[94vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">Book an Appointment</h3>
             <p className="mt-1 text-xs text-slate-500">Choose a date (tomorrow onwards), then pick a time slot.</p>
+            <p className="mt-2 text-xs font-semibold text-slate-600 md:hidden">
+              Step {mobileStep} of 2: {mobileStep === 1 ? "Date & Time" : "Appointment Details"}
+            </p>
           </div>
 
           <button
@@ -263,7 +270,7 @@ export default function BookAppointmentModal({
 
         <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr]">
           {/* Left: Calendar + slots */}
-          <div className="p-6 md:border-r border-slate-100">
+          <div className={`${mobileStep === 1 ? "block" : "hidden md:block"} p-4 md:p-6 md:border-r border-slate-100`}>
             <div className="flex items-center justify-between">
               <button
                 type="button"
@@ -375,11 +382,22 @@ export default function BookAppointmentModal({
                   Selected: <span className="font-extrabold">{selectedDate} • {selectedTime}</span>
                 </div>
               )}
+              <div className="mt-4 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileStep(2)}
+                  disabled={!canProceedToDetails}
+                  className="w-full rounded-xl px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+                  style={{ backgroundColor: BRAND }}
+                >
+                  Continue to Details
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Right: Details + submit */}
-          <div className="p-6">
+          <div className={`${mobileStep === 2 ? "block" : "hidden md:block"} p-4 md:p-6`}>
             <form
               action={formAction}
               className="space-y-4"
@@ -403,6 +421,15 @@ export default function BookAppointmentModal({
                 }
               }}
             >
+              <div className="md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileStep(1)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Back to Date & Time
+                </button>
+              </div>
               <input type="hidden" name="date" value={selectedDate} />
               <input type="hidden" name="time" value={selectedTime} />
               <input type="hidden" name="displayName" value={fullName} />

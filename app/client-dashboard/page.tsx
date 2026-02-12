@@ -19,6 +19,7 @@ import type { PatientRecord } from "@/lib/types/patient";
 import BookAppointmentModal from "@/components/BookAppointmentModal";
 import AppointmentDetailsModal, { type AppointmentModalTab } from "@/components/client/AppointmentDetailsModal";
 import AppointmentRowActions from "@/components/client/AppointmentRowActions";
+import ReschuleBookAppointmentModal from "@/components/ReschuleBookAppointmentModal";
 import { getDentistProfileByUid, type DentistProfile } from "@/lib/services/dentist-profile-service";
 import TransactionsTable from "@/components/client/TransactionsTable";
 import { getUserDisplayNameByUid } from "@/lib/services/user-service";
@@ -66,6 +67,7 @@ function AppointmentsTable({
   loading,
   onAddAppointment,
   onOpenModal,
+  onReschedule,
   onConfirm,
   onCancel,
   getCancelDisabledReason,
@@ -74,6 +76,7 @@ function AppointmentsTable({
   loading: boolean;
   onAddAppointment: () => void;
   onOpenModal: (appt: Appointment, tab: AppointmentModalTab) => void;
+  onReschedule: (appt: Appointment) => void;
   onConfirm: (appt: Appointment) => void;
 
   onCancel: (appt: Appointment) => void;
@@ -163,6 +166,7 @@ function AppointmentsTable({
                   appointment={appt}
                   onView={() => onOpenModal(appt, "details")}
                   onTransactions={() => onOpenModal(appt, "transactions")}
+                  onReschedule={() => onReschedule(appt)}
                   onConfirm={() => onConfirm(appt)}
                   onCancel={() => onCancel(appt)}
                 />
@@ -206,6 +210,7 @@ function AppointmentsTable({
                     appointment={appt}
                     onView={() => onOpenModal(appt, "details")}
                     onTransactions={() => onOpenModal(appt, "transactions")}
+                    onReschedule={() => onReschedule(appt)}
                     onConfirm={() => onConfirm(appt)}
                     onCancel={() => onCancel(appt)}
                    
@@ -913,6 +918,7 @@ export default function ClientDashboardPage() {
   const [recordLoading, setRecordLoading] = useState(true);
 
   const [openBooking, setOpenBooking] = useState(false);
+  const [openReschedule, setOpenReschedule] = useState(false);
   const [openTreatmentRecord, setOpenTreatmentRecord] = useState(false);
 
   const normalizedRole = (role ?? "").toString().trim().toLowerCase();
@@ -1118,6 +1124,11 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     }
   }
 
+  function handleOpenReschedule(appt: Appointment) {
+    setSelectedAppt(appt);
+    setOpenReschedule(true);
+  }
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-4">
@@ -1299,6 +1310,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                 loading={historyLoading}
                 onAddAppointment={() => setOpenBooking(true)}
                 onOpenModal={openModal}
+                onReschedule={handleOpenReschedule}
                 onConfirm={handleConfirmAppointment}
                 onCancel={handleCancelAppointment}
                 getCancelDisabledReason={getCancelDisabledReason}
@@ -1342,6 +1354,15 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
       />
 
       <BookAppointmentModal open={openBooking} onClose={() => setOpenBooking(false)} onBooked={refreshAppointments} />
+      <ReschuleBookAppointmentModal
+        open={openReschedule}
+        appointment={selectedAppt}
+        onClose={() => setOpenReschedule(false)}
+        onRescheduled={async () => {
+          setOpenReschedule(false);
+          await refreshAppointments();
+        }}
+      />
       {openTreatmentRecord && user?.uid && (
         <ClientTreatmentHistoryModal
           patientId={user.uid}

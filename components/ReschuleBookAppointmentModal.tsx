@@ -108,6 +108,7 @@ export default function ReschuleBookAppointmentModal({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [mobileStep, setMobileStep] = useState<1 | 2>(1);
 
   const currentDate = appointment?.date || "";
   const currentTime = appointment?.time || "";
@@ -180,6 +181,7 @@ export default function ReschuleBookAppointmentModal({
     } else {
       setMonthCursor(startOfMonth(new Date()));
     }
+    setMobileStep(1);
   }, [open, appointment]);
 
   // Load availability when date changes
@@ -270,6 +272,7 @@ export default function ReschuleBookAppointmentModal({
     !isHoliday &&
     !rescheduleBlocked &&
     date >= todayYMD;
+  const canProceedToTime = !!date && !rescheduleBlocked && !isHoliday;
 
   async function handleSave() {
     if (!appointment?.id) return;
@@ -335,13 +338,16 @@ export default function ReschuleBookAppointmentModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
+      <div className="relative w-full max-w-4xl max-h-[94vh] overflow-y-auto rounded-2xl bg-white shadow-xl border border-slate-200">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">Reschedule Appointment</h3>
             <p className="text-sm text-slate-500 mt-1">
               Choose a new date and time — conflicts and past times are blocked.
+            </p>
+            <p className="mt-2 text-xs font-semibold text-slate-600 md:hidden">
+              Step {mobileStep} of 2: {mobileStep === 1 ? "Pick Date" : "Pick Time"}
             </p>
           </div>
 
@@ -353,7 +359,7 @@ export default function ReschuleBookAppointmentModal({
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           {/* Summary */}
           <div className="rounded-2xl border border-slate-200 p-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -417,7 +423,7 @@ export default function ReschuleBookAppointmentModal({
           {/* Pickers */}
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Calendar Grid */}
-            <div className="rounded-2xl border border-slate-200 p-5">
+            <div className={`${mobileStep === 1 ? "block" : "hidden md:block"} rounded-2xl border border-slate-200 p-4 md:p-5`}>
               <div className="flex items-center justify-between gap-2">
                 <button
                   type="button"
@@ -497,10 +503,21 @@ export default function ReschuleBookAppointmentModal({
                   Past dates are disabled. Pick today or future dates only.
                 </p>
               </div>
+
+              <div className="mt-4 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileStep(2)}
+                  disabled={!canProceedToTime}
+                  className="w-full rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Continue to Time
+                </button>
+              </div>
             </div>
 
             {/* Time Slots */}
-            <div className="rounded-2xl border border-slate-200 p-5">
+            <div className={`${mobileStep === 2 ? "block" : "hidden md:block"} rounded-2xl border border-slate-200 p-4 md:p-5`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-extrabold text-slate-900">Select time</p>
@@ -514,6 +531,16 @@ export default function ReschuleBookAppointmentModal({
                       : "Available hourly slots."}
                   </p>
                 </div>
+              </div>
+
+              <div className="mt-3 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileStep(1)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Back to Date
+                </button>
               </div>
 
               <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
@@ -564,7 +591,14 @@ export default function ReschuleBookAppointmentModal({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2">
+        <div className={`${mobileStep === 1 ? "hidden md:flex" : "flex"} px-4 md:px-6 py-4 border-t border-slate-100 items-center justify-end gap-2`}>
+          <button
+            onClick={() => setMobileStep(1)}
+            className="md:hidden rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            disabled={saving}
+          >
+            Back
+          </button>
           <button
             onClick={onClose}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"

@@ -7,18 +7,21 @@ export default function AppointmentRowActions({
   appointment,
   onView,
   onTransactions,
+  onReschedule,
   onConfirm,
   onCancel,
 }: {
   appointment: Appointment;
   onView: () => void;
   onTransactions: () => void;
+  onReschedule: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const status = String(appointment.status || "").toLowerCase();
   const canConfirm = status === "pending";
   const canCancel = status === "pending";
+  const canReschedule = status === "pending";
   const canTransactions = status === "completed" && !!appointment.treatment;
 
   return (
@@ -46,6 +49,14 @@ export default function AppointmentRowActions({
 
       {canCancel && (
         <>
+          {canReschedule && (
+            <button
+              className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+              onClick={onReschedule}
+            >
+              Reschedule
+            </button>
+          )}
           <button
             className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
             onClick={onConfirm}
