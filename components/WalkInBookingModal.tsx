@@ -27,6 +27,16 @@ const BRAND = "#0E4B5A";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TIME_SLOTS = ["08:00", "09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"];
 
+function formatTime12h(time: string) {
+  const [hRaw, mRaw] = String(time || "").split(":");
+  const h = Number(hRaw);
+  const m = Number(mRaw);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return time;
+  const period = h >= 12 ? "PM" : "AM";
+  const hh = h % 12 === 0 ? 12 : h % 12;
+  return `${hh}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -92,7 +102,7 @@ function SlotButton({
   if (disabled) {
     return (
       <button type="button" disabled className={`${base} border-slate-200 bg-slate-50 text-slate-400`}>
-        {time} <span className="ml-2 text-xs font-extrabold">({label || "Unavailable"})</span>
+        {formatTime12h(time)} <span className="ml-2 text-xs font-extrabold">({label || "Unavailable"})</span>
       </button>
     );
   }
@@ -105,7 +115,7 @@ function SlotButton({
         className={`${base} border-transparent text-white`}
         style={{ backgroundColor: BRAND }}
       >
-        {time} <span className="ml-2 text-xs font-extrabold">(Selected)</span>
+        {formatTime12h(time)} <span className="ml-2 text-xs font-extrabold">(Selected)</span>
       </button>
     );
   }
@@ -116,7 +126,7 @@ function SlotButton({
       onClick={onClick}
       className={`${base} border-slate-200 bg-white text-slate-800 hover:bg-slate-50`}
     >
-      {time}
+      {formatTime12h(time)}
     </button>
   );
 }
