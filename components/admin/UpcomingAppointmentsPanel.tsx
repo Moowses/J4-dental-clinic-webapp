@@ -34,7 +34,7 @@ type UpcomingRow = AppointmentWithPatient & { dateStr: string };
 
 type BusyMap = Record<
   string,
-  { assigning?: boolean; confirming?: boolean; cancelling?: boolean }
+  { assigning?: boolean; confirming?: boolean; cancelling?: boolean; noShowing?: boolean }
 >;
 
 const inputBase =
@@ -48,10 +48,15 @@ function pillClass(status: string) {
   if (s === "confirmed") return `${base} bg-emerald-50 text-emerald-700 border-emerald-200`;
   if (s === "cancelled") return `${base} bg-rose-50 text-rose-700 border-rose-200`;
   if (s === "completed") return `${base} bg-slate-50 text-slate-700 border-slate-200`;
+  if (s === "no_show") return `${base} bg-orange-50 text-orange-700 border-orange-200`;
   return `${base} bg-amber-50 text-amber-700 border-amber-200`;
 }
 
-export default function UpcomingAppointmentsPanel() {
+export default function UpcomingAppointmentsPanel({
+  view = "upcoming",
+}: {
+  view?: "upcoming" | "completed" | "cancelled" | "no_show";
+}) {
   const [days, setDays] = useState<7 | 14 | 30>(14);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -137,6 +142,23 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
     [dentists]
   );
 
+  const visibleRows = useMemo(() => {
+    const getStatus = (a: UpcomingRow) => String(a.status || "").toLowerCase();
+    if (view === "completed") {
+      return rows.filter((a) => getStatus(a) === "completed");
+    }
+    if (view === "cancelled") {
+      return rows.filter((a) => getStatus(a) === "cancelled");
+    }
+    if (view === "no_show") {
+      return rows.filter((a) => getStatus(a) === "no_show");
+    }
+    return rows.filter((a) => {
+      const s = getStatus(a);
+      return s !== "completed" && s !== "cancelled" && s !== "no_show";
+    });
+  }, [rows, view]);
+
   async function handleAssign(appointmentId: string, dentistId: string) {
     if (!dentistId) return;
 
@@ -193,6 +215,24 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
     }
   }
 
+  async function handleNoShow(appointmentId: string) {
+    setRowBusy(appointmentId, { noShowing: true });
+    setErr(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await updateAppointmentStatusAction(appointmentId, "no_show");
+      if (!res?.success) throw new Error(res?.error || "Failed to mark appointment as no show.");
+
+      setSuccessMsg("Appointment marked as no show.");
+      await fetchUpcoming();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to mark appointment as no show.");
+    } finally {
+      setRowBusy(appointmentId, { noShowing: false });
+    }
+  }
+
  function openRescheduleModal(a: AppointmentWithPatient) {
   setReschedAppt(a);
   setReschedOpen(true);
@@ -202,8 +242,24 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-lg font-extrabold text-slate-900">Upcoming</h3>
-          <p className="text-sm text-slate-500">Appointments with doctor assignment and actions</p>
+          <h3 className="text-lg font-extrabold text-slate-900">
+            {view === "completed"
+              ? "Completed"
+              : view === "cancelled"
+              ? "Cancelled"
+              : view === "no_show"
+              ? "No Show"
+              : "Upcoming"}
+          </h3>
+          <p className="text-sm text-slate-500">
+            {view === "completed"
+              ? "Completed appointments list"
+              : view === "cancelled"
+              ? "Cancelled appointments list"
+              : view === "no_show"
+              ? "No show appointments list"
+              : "Appointments with doctor assignment and actions"}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -241,20 +297,32 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
 
         {loading ? (
           <p className="text-sm text-slate-500">Loading...</p>
-        ) : rows.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">No upcoming appointments.</p>
+        ) : visibleRows.length === 0 ? (
+          <p className="text-sm text-slate-500 italic">
+            {view === "completed"
+              ? "No completed appointments."
+              : view === "cancelled"
+              ? "No cancelled appointments."
+              : view === "no_show"
+              ? "No no show appointments."
+              : "No upcoming appointments."}
+          </p>
         ) : (
           <div className="space-y-3">
-            {rows.map((a) => {
+            {visibleRows.map((a) => {
               const id = String(a.id || "");
               const status = String(a.status || "pending").toLowerCase();
 
               const isCancelled = status === "cancelled";
               const isCompleted = status === "completed";
+              const isNoShow = status === "no_show";
               const isConfirmed = status === "confirmed";
 
               const isBusy =
-                !!busy[id]?.assigning || !!busy[id]?.confirming || !!busy[id]?.cancelling;
+                !!busy[id]?.assigning ||
+                !!busy[id]?.confirming ||
+                !!busy[id]?.cancelling ||
+                !!busy[id]?.noShowing;
 
               return (
                 <div
@@ -269,7 +337,7 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
                           {a.patientName || "Unknown Patient"}
                         </p>
                         <span className={pillClass(a.status || "pending")}>
-                          {String(a.status || "pending").toUpperCase()}
+                          {String(a.status || "pending").replaceAll("_", " ").toUpperCase()}
                         </span>
                       </div>
 
@@ -293,7 +361,7 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
                       <select
                         className={`${inputBase} mt-1`}
                         value={a.dentistId || ""}
-                        disabled={isBusy || isCancelled || isCompleted}
+                        disabled={isBusy || isCancelled || isCompleted || isNoShow}
                         onChange={(e) => handleAssign(id, e.target.value)}
                       >
                         <option value="">Select dentist…</option>
@@ -314,7 +382,7 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => handleConfirm(id)}
-                      disabled={isBusy || isCancelled || isCompleted || isConfirmed}
+                      disabled={isBusy || isCancelled || isCompleted || isNoShow || isConfirmed}
                       className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-extrabold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {busy[id]?.confirming ? "Confirming..." : "Confirm"}
@@ -322,15 +390,23 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
 
                     <button
                       onClick={() => handleCancel(id)}
-                      disabled={isBusy || isCancelled || isCompleted}
+                      disabled={isBusy || isCancelled || isCompleted || isNoShow}
                       className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-extrabold text-rose-800 hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {busy[id]?.cancelling ? "Cancelling..." : "Cancel"}
                     </button>
 
                     <button
+                      onClick={() => handleNoShow(id)}
+                      disabled={isBusy || isCancelled || isCompleted || isNoShow}
+                      className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-extrabold text-orange-800 hover:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {busy[id]?.noShowing ? "Saving..." : "No Show"}
+                    </button>
+
+                    <button
                        onClick={() => openRescheduleModal(a)}  
-                      disabled={isBusy || isCancelled || isCompleted}
+                      disabled={isBusy || isCancelled || isCompleted || isNoShow}
                       className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Reschedule

@@ -6,7 +6,7 @@ import { getUserProfile } from "@/lib/services/user-service";
 import { getPatientRecord } from "@/lib/services/patient-service";
 import type { UserProfile } from "@/lib/types/user";
 
-type FilterKey = "all" | "unpaid" | "paid";
+type FilterKey = "unpaid" | "paid";
 
 type AnyItem = {
   id: string;
@@ -91,7 +91,7 @@ export default function BillingOverviewPanel({
   onSelectBill: (billingIdOrPatientKey: string) => void;
   refreshKey?: number;
 }) {
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [filter, setFilter] = useState<FilterKey>("unpaid");
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<PatientRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -111,8 +111,7 @@ export default function BillingOverviewPanel({
         const filtered = bills.filter((b) => {
           const t = billTotals(b);
           if (filter === "paid") return t.isPaid;
-          if (filter === "unpaid") return t.isUnpaid;
-          return true;
+          return t.isUnpaid;
         });
 
         const patientIds = Array.from(
@@ -218,11 +217,11 @@ export default function BillingOverviewPanel({
             With Balance: {stats.openPatients}
           </span>
           <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700">
-            Unpaid Bills: {stats.unpaidBills}
+            Open Bills: {stats.unpaidBills}
           </span>
 
           <div className="ml-0 sm:ml-2 flex gap-1">
-            {(["all", "unpaid", "paid"] as const).map((k) => {
+            {(["unpaid", "paid"] as const).map((k) => {
               const active = filter === k;
               return (
                 <button
@@ -275,7 +274,7 @@ export default function BillingOverviewPanel({
                       key={r.patientId}
                       className="text-sm hover:bg-slate-50 cursor-pointer"
                       title="Click here to view more"
-                      onClick={() => onSelectBill(`pid:${r.patientId}`)}
+                      onClick={() => onSelectBill(`pid:${r.patientId}|f:${filter}`)}
                     >
                       <td className="p-3 text-slate-600 font-mono whitespace-nowrap">
                         {r.patientCode}
@@ -300,7 +299,7 @@ export default function BillingOverviewPanel({
                       </td>
                       <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => onSelectBill(`pid:${r.patientId}`)}
+                          onClick={() => onSelectBill(`pid:${r.patientId}|f:${filter}`)}
                           className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-extrabold hover:bg-slate-800 transition"
                         >
                           Manage

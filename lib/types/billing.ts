@@ -17,6 +17,7 @@ export interface BillingInstallment {
   amount: number;
   status: "pending" | "paid" | "overdue" | "cancelled";
   paidAt?: Timestamp;
+  description?: string;
 }
 
 export interface BillingItem {

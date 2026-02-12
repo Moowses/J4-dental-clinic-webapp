@@ -223,6 +223,21 @@ type ConfirmState =
       label: string;
     };
 
+type BillingListMode = "unpaid" | "paid";
+
+function parseBillingSelection(raw: string): {
+  patientId: string;
+  appointmentId: string;
+  mode: BillingListMode;
+} {
+  const value = String(raw || "");
+  const mode: BillingListMode = value.includes("|f:paid") ? "paid" : "unpaid";
+  const core = value.split("|f:")[0];
+  const patientId = core.startsWith("pid:") ? core.slice(4) : "";
+  const appointmentId = core.startsWith("pid:") ? "" : core;
+  return { patientId, appointmentId, mode };
+}
+
 export default function BillingPaymentPlansPanel({
   billingId,
   onClose,
@@ -232,11 +247,13 @@ export default function BillingPaymentPlansPanel({
   onClose: () => void;
   onUpdated?: () => void;
 }) {
-  const initialPatientId = billingId.startsWith("pid:") ? billingId.slice(4) : "";
-  const initialAppointmentId = billingId.startsWith("pid:") ? "" : billingId;
+  const parsedInitial = parseBillingSelection(billingId);
+  const initialPatientId = parsedInitial.patientId;
+  const initialAppointmentId = parsedInitial.appointmentId;
 
   const [patientId, setPatientId] = useState<string>(initialPatientId);
   const [activeAppointmentId, setActiveAppointmentId] = useState<string>(initialAppointmentId);
+  const [listMode, setListMode] = useState<BillingListMode>(parsedInitial.mode);
   const [patientBills, setPatientBills] = useState<BillingRecord[]>([]);
   const [bill, setBill] = useState<BillingRecord | null>(null);
   const [patientName, setPatientName] = useState<string>("â€”");
@@ -282,11 +299,13 @@ export default function BillingPaymentPlansPanel({
   }, []);
 
   useEffect(() => {
-    const pid = billingId.startsWith("pid:") ? billingId.slice(4) : "";
-    const appt = billingId.startsWith("pid:") ? "" : billingId;
+    const parsed = parseBillingSelection(billingId);
+    const pid = parsed.patientId;
+    const appt = parsed.appointmentId;
 
     setPatientId(pid);
     setActiveAppointmentId(appt);
+    setListMode(parsed.mode);
     setPatientBills([]);
     setBill(null);
     setSelectedItemIds([]);
@@ -426,6 +445,22 @@ export default function BillingPaymentPlansPanel({
   }, [bill]);
 
   const totals = useMemo(() => computeTotals(bill), [bill]);
+  const isPaidView = listMode === "paid";
+
+  const visiblePatientBills = useMemo(() => {
+    return patientBills.filter((b) => {
+      const s = computeTotals(b).status;
+      return isPaidView ? s === "paid" : s !== "paid";
+    });
+  }, [patientBills, isPaidView]);
+
+  useEffect(() => {
+    if (!visiblePatientBills.length) return;
+    const exists = visiblePatientBills.some((b) => b.appointmentId === activeAppointmentId);
+    if (!activeAppointmentId || !exists) {
+      setActiveAppointmentId(visiblePatientBills[0].appointmentId);
+    }
+  }, [visiblePatientBills, activeAppointmentId]);
 
   const selectedRemainingTotal = useMemo(() => {
     if (!bill) return 0;
@@ -442,6 +477,10 @@ export default function BillingPaymentPlansPanel({
   }, [bill, items, selectedItemIds]);
 
   function openConfirmPayment(fullBalance: boolean) {
+    if (isPaidView) {
+      setErr("Paid records are view only.");
+      return;
+    }
     if (!bill) return;
     setErr(null);
 
@@ -483,6 +522,10 @@ export default function BillingPaymentPlansPanel({
   }
 
   function openConfirmInstallment(inst: BillingInstallment) {
+    if (isPaidView) {
+      setErr("Paid records are view only.");
+      return;
+    }
     if (!bill) return;
     if (inst.status === "paid") return;
 
@@ -497,6 +540,10 @@ export default function BillingPaymentPlansPanel({
   }
 
   function openConfirmCreatePlan() {
+    if (isPaidView) {
+      setErr("Paid records are view only.");
+      return;
+    }
     if (!bill) return;
     setErr(null);
 
@@ -630,7 +677,9 @@ export default function BillingPaymentPlansPanel({
                   <div>
                     <div className="text-sm font-extrabold text-slate-900">Appointments</div>
                     <div className="text-xs text-slate-500 mt-1">
-                      Unpaid/partial appointments appear first.
+                      {isPaidView
+                        ? "Showing paid appointments only (0 balance)."
+                        : "Showing unpaid/partial appointments only."}
                     </div>
                   </div>
                   <div className="text-xs text-slate-500">
@@ -646,8 +695,8 @@ export default function BillingPaymentPlansPanel({
                     <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-600">
                       Loading…
                     </div>
-                  ) : patientBills.length ? (
-                    patientBills.map((b) => {
+                  ) : visiblePatientBills.length ? (
+                    visiblePatientBills.map((b) => {
                       const t = computeTotals(b);
                       const active = b.appointmentId === activeAppointmentId;
                       const allProcedures = summarizeAllProcedures(b.items);
@@ -718,7 +767,7 @@ export default function BillingPaymentPlansPanel({
                     })
                   ) : (
                     <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-600">
-                      No bills found.
+                      {isPaidView ? "No paid bills found." : "No unpaid bills found."}
                     </div>
                   )}
                 </div>
@@ -747,7 +796,8 @@ export default function BillingPaymentPlansPanel({
                     <tbody className="divide-y divide-slate-100">
                       {items.map((it) => {
                         const st = String(it.status || "unpaid").toLowerCase();
-                        const disabled = st === "paid" || st === "void" || st === "waived";
+                        const disabled =
+                          isPaidView || st === "paid" || st === "void" || st === "waived";
                         const checked = selectedItemIds.includes(it.id);
                         return (
                           <tr key={it.id}>
@@ -842,8 +892,13 @@ export default function BillingPaymentPlansPanel({
                       </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="rounded-2xl border border-slate-200 p-4">
+	                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {isPaidView ? (
+                        <div className="md:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                          Paid records are view only. Payment actions are disabled.
+                        </div>
+                      ) : null}
+	                      <div className="rounded-2xl border border-slate-200 p-4">
                         <div className="text-sm font-extrabold text-slate-900">Record payment</div>
                         <div className="text-xs text-slate-500 mt-1">
                           Select items if you want to pay specific procedures only.
@@ -858,9 +913,10 @@ export default function BillingPaymentPlansPanel({
                             type="number"
                             min={0}
                             step={0.01}
+                            disabled={busy || isPaidView}
                           />
                           <button
-                            disabled={busy}
+                            disabled={busy || isPaidView}
                             onClick={() => openConfirmPayment(false)}
                             className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                           >
@@ -873,6 +929,7 @@ export default function BillingPaymentPlansPanel({
                           onChange={(e) => setNote(e.target.value)}
                           placeholder="Notes if Gcash and Bank trasnfer please Note the last four digits of the reference number (optional)"
                           className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm min-h-[80px]"
+                          disabled={busy || isPaidView}
                         />
 
                         <div className="mt-3 flex items-center justify-between gap-2">
@@ -880,8 +937,12 @@ export default function BillingPaymentPlansPanel({
                             Selected items remaining: ₱ {money(selectedRemainingTotal)}
                           </div>
                           <button
-                            disabled={busy}
-                            onClick={() => openConfirmPayment(true)}
+                            disabled={busy || isPaidView}
+                            onClick={() => {
+                              setSelectedItemIds([]);
+                              setPayAmount(String(Number(totals.remaining || 0).toFixed(2)));
+                              setErr(null);
+                            }}
                             className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-extrabold hover:bg-slate-800 disabled:opacity-60"
                           >
                             Pay full balance
@@ -894,6 +955,7 @@ export default function BillingPaymentPlansPanel({
                             value={method}
                             onChange={(e) => setMethod(e.target.value)}
                             className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                            disabled={busy || isPaidView}
                           >
                             <option value="cash">Cash</option>
                             <option value="gcash">GCash</option>
@@ -917,6 +979,7 @@ export default function BillingPaymentPlansPanel({
                             value={planItemId}
                             onChange={(e) => setPlanItemId(e.target.value)}
                             className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                            disabled={busy || isPaidView}
                           >
                             <option value="">Choose an item…</option>
                             {items.map((it) => (
@@ -938,11 +1001,12 @@ export default function BillingPaymentPlansPanel({
                             min={1}
                             max={36}
                             step={1}
+                            disabled={busy || isPaidView}
                           />
                         </div>
 
                         <button
-                          disabled={busy}
+                          disabled={busy || isPaidView}
                           onClick={openConfirmCreatePlan}
                           className="mt-4 w-full px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-extrabold hover:bg-slate-800 disabled:opacity-60"
                         >
@@ -990,7 +1054,7 @@ export default function BillingPaymentPlansPanel({
                                 ₱ {money(Number(inst.amount || 0))}
                               </div>
                               <button
-                                disabled={busy || inst.status === "paid"}
+                                disabled={busy || isPaidView || inst.status === "paid"}
                                 onClick={() => openConfirmInstallment(inst)}
                                 className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                               >

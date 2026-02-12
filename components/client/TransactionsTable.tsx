@@ -1,157 +1,161 @@
 "use client";
 
 import type { Appointment } from "@/lib/types/appointment";
-import { formatTime12h } from "@/lib/utils/time";
+import type { BillingRecord } from "@/lib/types/billing";
 
 function money(v: number) {
-  return `₱${Number(v || 0).toLocaleString()}`;
+  return `P${Number(v || 0).toLocaleString()}`;
 }
 
-function toSortTime(appt: Appointment): number {
-  const date = String((appt as any).date || "").trim();
-  const time = String((appt as any).time || "00:00").trim();
-  const t = new Date(`${date} ${time}`).getTime();
-  return Number.isFinite(t) ? t : 0;
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "toDate" in value &&
+    typeof (value as { toDate?: unknown }).toDate === "function"
+  ) {
+    const d = (value as { toDate: () => Date }).toDate();
+    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+  }
+
+  if (typeof value === "object" && value !== null && "seconds" in value) {
+    const seconds = (value as { seconds?: unknown }).seconds;
+    if (typeof seconds === "number") return new Date(seconds * 1000);
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
 }
+
+type HistoryRow = {
+  id: string;
+  appointmentId: string;
+  dateText: string;
+  sortMs: number;
+  procedureLabel: string;
+  dentist: string;
+  amount: number;
+  paymentText: string;
+  statusText: string;
+  statusClass: string;
+};
+
+type TxRow = {
+  id?: string;
+  date?: unknown;
+  amount?: number;
+  method?: string;
+  mode?: string;
+  installmentId?: string;
+};
+
+type InstRow = {
+  id?: string;
+  description?: string;
+};
 
 export default function TransactionsTable({
   appointments,
+  billingRecords,
   onOpenModal,
   dentistNameMap,
 }: {
   appointments: Appointment[];
+  billingRecords: BillingRecord[];
   onOpenModal: (appt: Appointment) => void;
   dentistNameMap: Record<string, string>;
 }) {
-  const rows = appointments
-    .filter((a) => ["completed", "cancelled"].includes(String((a as any).status || "").toLowerCase()))
-    .sort((a, b) => toSortTime(b) - toSortTime(a)); // latest first
+  const apptMap = new Map<string, Appointment>();
+  for (const a of appointments) apptMap.set(String(a.id || ""), a);
 
-  function resolveDentistName(appt: Appointment): string {
-    const dentistId = String((appt as any).dentistId || "").trim();
+  const resolveDentistName = (appt?: Appointment): string => {
+    if (!appt) return "N/A";
+    const dentistId = String((appt as Appointment & { dentistId?: string }).dentistId || "").trim();
     if (!dentistId) return "N/A";
     return dentistNameMap[dentistId] || "Dentist";
-  }
+  };
 
-  function printInvoice(appt: Appointment) {
-    const status = String((appt as any).status || "").toLowerCase();
-    if (status !== "completed") return;
+  const historyRows: HistoryRow[] = (billingRecords || [])
+    .flatMap((bill) => {
+      const apptId = String(bill?.appointmentId || "");
+      const appt = apptMap.get(apptId);
+      const dentist = resolveDentistName(appt);
 
-    const treatment = (appt as any).treatment;
-    if (!treatment) return;
+      const items = Array.isArray(bill?.items) ? bill.items : [];
+      const preferredItems = items.filter((it) => {
+        const s = String(it?.status || "").toLowerCase();
+        return s === "plan" || s === "partial" || s === "unpaid" || s === "paid";
+      });
+      const procedureName =
+        String((preferredItems[0] || items[0] || { name: "" })?.name || "").trim() ||
+        String((appt as Appointment & { serviceType?: string })?.serviceType || "Procedure");
 
-    const dentist = resolveDentistName(appt);
-    const patientName =
-      String((appt as any).patientName || "").trim() ||
-      String((appt as any).patientEmail || "").trim() ||
-      "Patient";
-    const apptDate = String((appt as any).date || "");
-    const apptTime = formatTime12h(String((appt as any).time || ""));
-    const procedures: { name: string; price: number }[] = Array.isArray(treatment?.procedures) ? treatment.procedures : [];
+      const installments = Array.isArray(bill?.paymentPlan?.installments)
+        ? bill.paymentPlan.installments
+        : [];
+      const totalTerms = installments.length;
+      const instMeta = new Map<string, { idx: number; description: string }>();
+      installments.forEach((inst: InstRow, i) => {
+        const descRaw = String(inst?.description || "").trim();
+        const desc = descRaw ? descRaw.split(" • Installment")[0] || descRaw : procedureName;
+        instMeta.set(String(inst?.id || ""), { idx: i + 1, description: desc });
+      });
 
-    const computedTotal =
-      typeof treatment?.totalBill === "number"
-        ? treatment.totalBill
-        : procedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0);
+      const txns = Array.isArray(bill?.transactions) ? bill.transactions : [];
+      const txnsWithTime = txns.map((tx: TxRow, idx) => ({
+        tx,
+        idx,
+        ms: toDate(tx?.date)?.getTime() || 0,
+      }));
+      const latestTxn = txnsWithTime.sort((a, b) => b.ms - a.ms || b.idx - a.idx)[0]?.tx;
+      const billIsPaid = String(bill?.status || "").toLowerCase() === "paid";
 
-    // Printable HTML (invoice-style, not official)
-    const html = `
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>J4 Dental Clinic - Invoice</title>
-    <style>
-      @page { margin: 18mm; }
-      body { font-family: "Helvetica Neue", Arial, sans-serif; margin: 0; color: #111; }
-      .page { position: relative; padding: 24px; }
-      .header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      .brand { display: flex; align-items: center; gap: 12px; }
-      .brand img { height: 52px; }
-      .clinic { font-size: 20px; font-weight: 800; margin: 0; }
-      .note { font-size: 12px; color: #555; margin-top: 4px; }
-      .invoice-box { text-align: right; }
-      .invoice-box .label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .08em; }
-      .invoice-box .value { font-size: 16px; font-weight: 800; margin-top: 4px; }
-      .meta { margin-top: 18px; font-size: 13px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-      .meta p { margin: 6px 0; }
-      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-      th, td { border: 1px solid #e5e7eb; padding: 10px 8px; font-size: 13px; }
-      th { background: #f8fafc; text-align: left; }
-      .right { text-align: right; }
-      .total-row td { font-weight: 800; }
-      .foot { margin-top: 18px; font-size: 12px; color: #64748b; border-top: 1px dashed #e2e8f0; padding-top: 10px; }
-    </style>
-  </head>
-  <body>
-    <div class="page">
-      <div class="header">
-        <div class="brand">
-          <img src="/dclogo.png" alt="J4 Dental Clinic" />
-          <div>
-            <p class="clinic">J4 Dental Clinic</p>
-            <div class="note">Informal summary (not an official invoice)</div>
-          </div>
-        </div>
-        <div class="invoice-box">
-          <div class="label">Appointment Ref</div>
-          <div class="value">${String((appt as any).id || "").slice(0, 10)}</div>
-        </div>
-      </div>
+      return txns.map((tx: TxRow) => {
+        const txDate = toDate(tx?.date);
+        const mode = String(tx?.mode || "").toLowerCase();
+        const inst = instMeta.get(String(tx?.installmentId || ""));
+        const isFullInstallmentPay = mode === "installment_full";
+        const isInstallmentPay = mode === "installment";
+        const isLatestForBill = String(tx?.id || "") === String(latestTxn?.id || "");
+        const shouldShowPaid = isFullInstallmentPay || (billIsPaid && isLatestForBill);
 
-      <div class="meta">
-        <p><strong>Patient:</strong> ${patientName}</p>
-        <p><strong>Dentist:</strong> ${dentist}</p>
-        <p><strong>Date:</strong> ${apptDate}</p>
-        <p><strong>Time:</strong> ${apptTime}</p>
-        <p><strong>Service:</strong> ${String((appt as any).serviceType || "—")}</p>
-      </div>
+        const procedureLabel = isFullInstallmentPay
+          ? `Paid full ${procedureName}`
+          : isInstallmentPay && inst
+          ? `${inst.description} ${inst.idx} of ${totalTerms || "?"}`
+          : procedureName;
 
-      <table>
-        <thead>
-          <tr>
-            <th>Procedure</th>
-            <th class="right">Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${
-            procedures.length
-              ? procedures
-                  .map(
-                    (p) =>
-                      `<tr><td>${String(p.name || "")}</td><td class="right">₱${Number(p.price || 0).toLocaleString()}</td></tr>`
-                  )
-                  .join("")
-              : `<tr><td>—</td><td class="right">₱0</td></tr>`
-          }
-          <tr class="total-row">
-            <td class="right">Total</td>
-            <td class="right">₱${Number(computedTotal || 0).toLocaleString()}</td>
-          </tr>
-        </tbody>
-      </table>
+        const statusText = shouldShowPaid ? "Paid" : "Partial";
+        const statusClass = shouldShowPaid
+          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+          : "bg-amber-50 text-amber-700 border-amber-200";
 
-      <div class="foot">
-        This document is for reference only and is not an official receipt.
-      </div>
-    </div>
-  </body>
-</html>
-    `;
+        return {
+          id: `${apptId}-${String(tx?.id || Math.random())}`,
+          appointmentId: apptId,
+          dateText: txDate ? txDate.toLocaleDateString() : "—",
+          sortMs: txDate?.getTime() || 0,
+          procedureLabel,
+          dentist,
+          amount: Number(tx?.amount || 0),
+          paymentText: String(tx?.method || "cash").toUpperCase(),
+          statusText,
+          statusClass,
+        } satisfies HistoryRow;
+      });
+    })
+    .sort((a, b) => b.sortMs - a.sortMs);
 
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.print();
-  }
-
-  if (!rows.length) {
+  if (!historyRows.length) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm font-semibold text-slate-700">No transactions yet.</p>
+        <p className="text-sm font-semibold text-slate-700">No payment history yet.</p>
       </div>
     );
   }
@@ -161,7 +165,7 @@ export default function TransactionsTable({
       <div className="border-b border-slate-100 px-6 py-4">
         <h3 className="text-lg font-extrabold text-slate-900">Payment History</h3>
         <p className="mt-1 text-xs text-slate-500">
-          Completed and cancelled appointments (latest first). Click a row to view more.
+          Installment and full-payment records (latest first).
         </p>
       </div>
 
@@ -172,77 +176,32 @@ export default function TransactionsTable({
               <th className="px-6 py-3">Date</th>
               <th className="px-6 py-3">Case / Procedure</th>
               <th className="px-6 py-3">Dentist</th>
-              <th className="px-6 py-3">Total</th>
-              <th className="px-6 py-3">Paid</th>
+              <th className="px-6 py-3">Amount</th>
+              <th className="px-6 py-3">Payment</th>
               <th className="px-6 py-3">Status</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-slate-100">
-            {rows.map((a) => {
-              const status = String((a as any).status || "").toLowerCase();
-              const treatment = (a as any).treatment;
-
-              const proceduresText =
-                status === "completed"
-                  ? treatment?.procedures?.map((p: any) => p.name).filter(Boolean).join(", ") || "—"
-                  : "—";
-
-              const total =
-                status === "completed"
-                  ? treatment?.totalBill ??
-                    treatment?.procedures?.reduce((s: number, p: any) => s + Number(p.price || 0), 0) ??
-                    0
-                  : 0;
-
-              const dentist = status === "completed" ? resolveDentistName(a) : "N/A";
-
+            {historyRows.map((row) => {
+              const appt = apptMap.get(row.appointmentId);
               return (
                 <tr
-                  key={String((a as any).id || "")}
-                  onClick={() => onOpenModal(a)}
-                  title="Click here to view more"
-                  className="cursor-pointer hover:bg-slate-50 transition"
+                  key={row.id}
+                  onClick={() => (appt ? onOpenModal(appt) : undefined)}
+                  className={`transition ${appt ? "cursor-pointer hover:bg-slate-50" : ""}`}
                 >
-                  <td className="px-6 py-4 text-slate-700">{String((a as any).date || "")}</td>
-
-                  <td className="px-6 py-4 font-semibold text-slate-900">{proceduresText}</td>
-
-                  <td className="px-6 py-4 font-semibold text-slate-900">{dentist}</td>
-
-                  <td className="px-6 py-4 font-extrabold text-slate-900">
-                    {status === "completed" ? money(total) : money(0)}
-                  </td>
-
-                  <td className="px-6 py-4 font-semibold text-slate-900">
-                    {status === "completed" ? "Paid" : "N/A"}
-                  </td>
-
+                  <td className="px-6 py-4 text-slate-700">{row.dateText}</td>
+                  <td className="px-6 py-4 font-semibold text-slate-900">{row.procedureLabel}</td>
+                  <td className="px-6 py-4 font-semibold text-slate-900">{row.dentist}</td>
+                  <td className="px-6 py-4 font-extrabold text-slate-900">{money(row.amount)}</td>
+                  <td className="px-6 py-4 font-semibold text-slate-900">{row.paymentText}</td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-xs font-bold uppercase ${
-                          status === "completed"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : "bg-red-50 text-red-700 border-red-200"
-                        }`}
-                      >
-                        {status}
-                      </span>
-
-                      {status === "completed" && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            printInvoice(a);
-                          }}
-                          className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                          title="Print / Save as PDF"
-                        >
-                          Print
-                        </button>
-                      )}
-                    </div>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-xs font-bold uppercase ${row.statusClass}`}
+                    >
+                      {row.statusText}
+                    </span>
                   </td>
                 </tr>
               );

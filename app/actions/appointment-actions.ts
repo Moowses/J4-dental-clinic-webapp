@@ -29,7 +29,11 @@ import {
   Appointment,
   PaymentMethod,
 } from "@/lib/types/appointment";
-import { sendAppointmentConfirmationEmailAction, sendRescheduleEmailsAction } from "@/app/actions/appointment-email-actions";
+import {
+  sendAppointmentConfirmationEmailAction,
+  sendRescheduleEmailsAction,
+  sendNoShowEmailAction,
+} from "@/app/actions/appointment-email-actions";
 import { getAppointmentById, rescheduleAppointment } from "@/lib/services/appointment-service";
 import { getBillingDetails, setupPaymentPlan } from "@/lib/services/billing-service";
 import type { BillingRecord } from "@/lib/types/billing";
@@ -360,7 +364,37 @@ export async function updateAppointmentStatusAction(
     return { success: false, error: "Unauthorized" };
   }
 
-  return await updateAppointmentStatus(appointmentId, status);
+  const result = await updateAppointmentStatus(appointmentId, status);
+  if (!result?.success) return result;
+
+  if (status === "no_show") {
+    try {
+      const apptRes = await getAppointmentById(appointmentId);
+      if (apptRes.success && apptRes.data) {
+        const appt = apptRes.data as Appointment;
+        const profileRes = await getUserProfile(appt.patientId);
+        const patientEmail = profileRes?.success ? profileRes.data?.email : "";
+
+        if (patientEmail) {
+          await sendNoShowEmailAction({
+            appointmentId: appt.id,
+            date: String(appt.date || ""),
+            time: String(appt.time || ""),
+            serviceName: String(appt.serviceType || "Dental Service"),
+            patientName:
+              (profileRes?.success && profileRes.data?.displayName) ||
+              profileRes?.data?.email ||
+              "Patient",
+            patientEmail,
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to send no show email:", e);
+    }
+  }
+
+  return result;
 }
 ///resceduleAppointmentAction
 

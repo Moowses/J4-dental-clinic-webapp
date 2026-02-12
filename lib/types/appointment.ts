@@ -1,6 +1,11 @@
 import { Timestamp } from "firebase/firestore";
 
-export type AppointmentStatus = "pending" | "confirmed" | "completed" | "cancelled";
+export type AppointmentStatus =
+  | "pending"
+  | "confirmed"
+  | "completed"
+  | "cancelled"
+  | "no_show";
 
 export interface TreatmentProcedure {
   id: string; // Original ID (if from catalog) or random (if custom)

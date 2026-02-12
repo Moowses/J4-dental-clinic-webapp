@@ -10,6 +10,7 @@ import {
   signUpAction,
   resendVerificationEmailAction,
 } from "@/app/actions/auth-actions";
+import { performPasswordReset } from "@/lib/services/auth-service";
 
 import { auth } from "@/lib/firebase/firebase";
 
@@ -135,6 +136,9 @@ export default function AuthModal({
   // verify screen
   const [showVerify, setShowVerify] = useState(false);
   const [emailInput, setEmailInput] = useState<string>("");
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+  const [forgotError, setForgotError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
    const [showPassword1, setShowPassword1] = useState(false);
 
@@ -159,6 +163,9 @@ export default function AuthModal({
     setBusy(false);
     setShowSuccess(false);
     setShowVerify(false);
+    setForgotSending(false);
+    setForgotMessage(null);
+    setForgotError(null);
     setEmailInput("");
   }, [open, defaultTab]);
 
@@ -277,6 +284,44 @@ export default function AuthModal({
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={pending || forgotSending}
+                    onClick={async () => {
+                      setForgotError(null);
+                      setForgotMessage(null);
+                      if (!emailInput.trim()) {
+                        setForgotError("Please enter your email first.");
+                        return;
+                      }
+                      setForgotSending(true);
+                      const res = await performPasswordReset({ email: emailInput.trim() });
+                      if (!res?.success) {
+                        setForgotError(res?.error || "Failed to send reset password email.");
+                      } else {
+                        setForgotMessage("Reset password email sent. Please check your inbox.");
+                      }
+                      setForgotSending(false);
+                    }}
+                    className="text-xs font-semibold text-[#0E4B5A] hover:underline disabled:opacity-60"
+                  >
+                    {forgotSending ? "Sending..." : "Forgot password?"}
+                  </button>
+                </div>
+
+                {forgotError ? (
+                  <div className="rounded-xl bg-red-50 p-3 text-sm text-red-600">
+                    {forgotError}
+                  </div>
+                ) : null}
+
+                {forgotMessage ? (
+                  <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">
+                    {forgotMessage}
+                  </div>
+                ) : null}
 
 
                 {loginState.error ? (

@@ -44,11 +44,20 @@ type TabKey =
   | "account-settings"
   | "clinic-settings";
 
-type ApptTab = "calendar" | "upcoming" | "unassigned";
+type ApptTab =
+  | "calendar"
+  | "upcoming"
+  | "completed"
+  | "cancelled"
+  | "no_show"
+  | "unassigned";
 
 const APPT_SUB_ITEMS = [
   { key: "calendar" as const, label: "Calendar" },
   { key: "upcoming" as const, label: "Upcoming" },
+  { key: "completed" as const, label: "Completed" },
+  { key: "cancelled" as const, label: "Cancelled" },
+  { key: "no_show" as const, label: "No Show" },
   { key: "unassigned" as const, label: "Unassigned" },
 ] as const;
 
@@ -656,7 +665,7 @@ export default function AdminDashboardPage() {
                         Appointments
                       </p>
                       <p className="text-sm text-slate-500">
-                        Calendar, upcoming bookings, and unassigned queue.
+                        Calendar, upcoming bookings, completed, cancelled, no show, and unassigned queue.
                       </p>
                     </div>
 
@@ -692,7 +701,10 @@ export default function AdminDashboardPage() {
                 </div>
 
                 {apptTab === "calendar" && <ClinicSchedulePanel />}
-                {apptTab === "upcoming" && <UpcomingAppointmentsPanel />}
+                {apptTab === "upcoming" && <UpcomingAppointmentsPanel view="upcoming" />}
+                {apptTab === "completed" && <UpcomingAppointmentsPanel view="completed" />}
+                {apptTab === "cancelled" && <UpcomingAppointmentsPanel view="cancelled" />}
+                {apptTab === "no_show" && <UpcomingAppointmentsPanel view="no_show" />}
                 {apptTab === "unassigned" && <UnassignedAppointmentsPanel />}
 
                 {(isAdmin || isFrontDesk) && (

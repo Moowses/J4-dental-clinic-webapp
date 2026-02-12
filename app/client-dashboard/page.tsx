@@ -12,8 +12,10 @@ import { getPatientTreatmentHistoryAction } from "@/app/actions/appointment-admi
 import { updateUserDocument } from "@/lib/services/user-service";
 import { updateUserProfile } from "@/lib/services/auth-service";
 import { formatTime12h } from "@/lib/utils/time";
+import { getBillingRecordsByPatient } from "@/lib/services/billing-service";
 
 import type { Appointment } from "@/lib/types/appointment";
+import type { BillingRecord } from "@/lib/types/billing";
 import type { PatientRecord } from "@/lib/types/patient";
 
 import BookAppointmentModal from "@/components/BookAppointmentModal";
@@ -220,6 +222,185 @@ function AppointmentsTable({
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "toDate" in value &&
+    typeof (value as { toDate?: unknown }).toDate === "function"
+  ) {
+    const d = (value as { toDate: () => Date }).toDate();
+    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+  }
+
+  if (typeof value === "object" && value !== null && "seconds" in value) {
+    const seconds = (value as { seconds?: unknown }).seconds;
+    if (typeof seconds === "number") return new Date(seconds * 1000);
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+function ActiveInstallmentsPanel({
+  billingRecords,
+  appointments,
+  loading,
+}: {
+  billingRecords: BillingRecord[];
+  appointments: Appointment[];
+  loading: boolean;
+}) {
+  const apptMap = useMemo(() => {
+    const map = new Map<string, Appointment>();
+    for (const a of appointments) map.set(String(a.id || ""), a);
+    return map;
+  }, [appointments]);
+
+  const activePlans = useMemo(() => {
+    const formatItemName = (it: BillingRecord["items"][number]) => {
+      const base = String(it?.name || "").trim();
+      const tooth = String(it?.toothNumber || "").trim();
+      return tooth ? `${base} (${tooth})` : base;
+    };
+
+    const summarizePlanProcedure = (bill: BillingRecord) => {
+      const items = Array.isArray(bill?.items) ? bill.items : [];
+      const prioritized = items.filter((it) => {
+        const s = String(it?.status || "").toLowerCase();
+        return s === "plan" || s === "partial" || s === "unpaid";
+      });
+      const pool = prioritized.length ? prioritized : items;
+      const names = pool.map(formatItemName).filter(Boolean);
+      if (names.length > 0) return names[0];
+
+      const installments = Array.isArray(bill?.paymentPlan?.installments)
+        ? bill.paymentPlan.installments
+        : [];
+      const firstDesc = String(installments[0]?.description || "").trim();
+      if (firstDesc) return firstDesc.split(" • Installment")[0] || firstDesc;
+
+      const appt = apptMap.get(String(bill.appointmentId || ""));
+      return String(appt?.serviceType || "Installment Plan");
+    };
+
+    return billingRecords
+      .map((bill) => {
+        const installments = Array.isArray(bill?.paymentPlan?.installments) ? bill.paymentPlan.installments : [];
+        if (!installments.length) return null;
+
+        const total = installments.length;
+        const paid = installments.filter((inst) => String(inst?.status || "").toLowerCase() === "paid").length;
+        const remaining = Math.max(0, total - paid);
+
+        const lastPaidAtMs = installments
+          .map((inst) => toDate(inst?.paidAt)?.getTime() || 0)
+          .reduce((max, curr) => Math.max(max, curr), 0);
+        const lastPaidAt = lastPaidAtMs > 0 ? new Date(lastPaidAtMs) : null;
+
+        const progressPct = total > 0 ? Math.round((paid / total) * 100) : 0;
+        return {
+          id: String(bill.id || bill.appointmentId || ""),
+          procedureName: summarizePlanProcedure(bill),
+          total,
+          paid,
+          remaining,
+          progressPct,
+          lastPaidAt,
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      procedureName: string;
+      total: number;
+      paid: number;
+      remaining: number;
+      progressPct: number;
+      lastPaidAt: Date | null;
+    }>;
+  }, [apptMap, billingRecords]);
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-sm font-semibold text-slate-800">Loading active installments...</p>
+        <div className="mt-4 space-y-3">
+          <div className="h-20 rounded-xl bg-slate-100" />
+          <div className="h-20 rounded-xl bg-slate-100" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!activePlans.length) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-extrabold text-slate-900">Active Installments</h3>
+        <p className="mt-2 text-sm text-slate-600">No active installment plans right now.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="border-b border-slate-100 px-6 py-4">
+        <h3 className="text-lg font-extrabold text-slate-900">Active Installments</h3>
+        <p className="mt-1 text-xs text-slate-500">Track your remaining months and latest installment payment.</p>
+      </div>
+
+      <div className="space-y-4 p-6">
+        {activePlans.map((plan) => (
+          <div key={plan.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-extrabold text-slate-900">{plan.procedureName}</p>
+                <p className="text-xs text-slate-500">{plan.total} month plan</p>
+              </div>
+              {plan.remaining <= 0 ? (
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                  Paid
+                </span>
+              ) : (
+                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-700">
+                  {plan.remaining} month{plan.remaining === 1 ? "" : "s"} remaining
+                </span>
+              )}
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-1 flex items-center justify-between text-xs font-bold text-slate-600">
+                <span>
+                  Monthly payments: {plan.paid} / {plan.total}
+                </span>
+                <span>{plan.progressPct}%</span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-cyan-600 transition-all"
+                  style={{ width: `${plan.progressPct}%` }}
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-600">
+              Last payment made:{" "}
+              <span className="font-bold text-slate-800">
+                {plan.lastPaidAt ? plan.lastPaidAt.toLocaleDateString() : "No payment yet"}
+              </span>
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -910,9 +1091,12 @@ export default function ClientDashboardPage() {
   const { user, role, loading, logout } = useAuth();
 
   const [active, setActive] = useState<"dashboard" | "transactions" | "settings">("dashboard");
+  const [paymentTab, setPaymentTab] = useState<"history" | "installments">("history");
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
+  const [installmentsLoading, setInstallmentsLoading] = useState(true);
 
   const [record, setRecord] = useState<PatientRecord | null>(null);
   const [recordLoading, setRecordLoading] = useState(true);
@@ -962,6 +1146,38 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     if (!user?.uid) return;
     refreshAppointments();
   }, [user?.uid, refreshAppointments]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setBillingRecords([]);
+      setInstallmentsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setInstallmentsLoading(true);
+
+    getBillingRecordsByPatient(user.uid, "all")
+      .then((res) => {
+        if (cancelled) return;
+        if (res?.success && Array.isArray(res.data)) {
+          setBillingRecords(res.data);
+          return;
+        }
+        setBillingRecords([]);
+      })
+      .catch(() => {
+        if (!cancelled) setBillingRecords([]);
+      })
+      .finally(() => {
+        if (!cancelled) setInstallmentsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
+
   useEffect(() => {
   let cancelled = false;
 
@@ -1193,7 +1409,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
             </div>
 
             <div className="p-3">
-              <div className="grid grid-cols-4 gap-2 lg:block">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:block">
                 <button
                   onClick={() => setActive("dashboard")}
                   className={`rounded-xl px-3 py-2 text-center text-xs font-bold transition lg:w-full lg:px-4 lg:py-3 lg:text-left lg:text-sm ${
@@ -1205,7 +1421,10 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                   Dashboard
                 </button>
                 <button
-                  onClick={() => setActive("transactions")}
+                  onClick={() => {
+                    setActive("transactions");
+                    setPaymentTab("history");
+                  }}
                   className={`rounded-xl px-3 py-2 text-center text-xs font-bold transition lg:mt-2 lg:w-full lg:px-4 lg:py-3 lg:text-left lg:text-sm ${
                     active === "transactions"
                       ? "bg-slate-900 text-white"
@@ -1316,11 +1535,49 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                 getCancelDisabledReason={getCancelDisabledReason}
               />
             ) : active === "transactions" ? (
-              <TransactionsTable
-                appointments={appointments}
-                dentistNameMap={dentistNameMap}
-                onOpenModal={(appt) => openModal(appt, "details")}
-              />
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentTab("history")}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+                        paymentTab === "history"
+                          ? "bg-slate-900 text-white"
+                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      Payment History
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentTab("installments")}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+                        paymentTab === "installments"
+                          ? "bg-slate-900 text-white"
+                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      Active Installment
+                    </button>
+                  </div>
+                </div>
+
+                {paymentTab === "history" ? (
+                  <TransactionsTable
+                    appointments={appointments}
+                    billingRecords={billingRecords}
+                    dentistNameMap={dentistNameMap}
+                    onOpenModal={(appt) => openModal(appt, "details")}
+                  />
+                ) : (
+                  <ActiveInstallmentsPanel
+                    billingRecords={billingRecords}
+                    appointments={appointments}
+                    loading={installmentsLoading}
+                  />
+                )}
+              </div>
             ) : recordLoading ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <p className="text-sm font-semibold text-slate-800">Loading account settings...</p>
