@@ -127,9 +127,8 @@ function continueUrl(path: string) {
   }
 }
 
-function clientSetupPasswordPath(email: string) {
-  const encoded = encodeURIComponent(email);
-  return `/account/setup-password?email=${encoded}`;
+function clientHomePath() {
+  return "/";
 }
 
 function randomPassword(length = 14) {
@@ -270,7 +269,8 @@ export async function createPatientAccountByStaff(data: {
     const patientId = await assignPatientId(created.uid);
 
     const verificationLink = await adminAuth.generateEmailVerificationLink(email, {
-      url: continueUrl(clientSetupPasswordPath(email)),
+      // After email confirmation, patient should land on homepage when opening the app.
+      url: continueUrl(clientHomePath()),
     });
 
     const sent = await sendAccountLifecycleEmail({
@@ -521,7 +521,8 @@ export async function sendPatientVerificationEmail(data: {
     if (!user.email) return { success: false, error: "Target user has no email." };
 
     const verificationLink = await adminAuth.generateEmailVerificationLink(user.email, {
-      url: continueUrl(clientSetupPasswordPath(user.email)),
+      // After email confirmation, patient should land on homepage when opening the app.
+      url: continueUrl(clientHomePath()),
     });
 
     const sent = await sendAccountLifecycleEmail({
