@@ -57,6 +57,9 @@ function normalize(s: string) {
     [/\bservices\b/g, "service"],
     [/\bpila\b/g, "how much"],
     [/\bmagkano\b/g, "how much"],
+    [/\bmag\s*kano\b/g, "how much"],
+    [/\bmag\s*kanu\b/g, "how much"],
+    [/\bmagkanu\b/g, "how much"],
     [/\bbayad\b/g, "payment"],
     [/\bpresyo\b/g, "price"],
     [/\blugar\b/g, "location"],
@@ -79,6 +82,65 @@ function normalize(s: string) {
     .trim();
 }
 
+function normalizeTokens(text: string) {
+  return normalize(text).split(" ").filter(Boolean);
+}
+
+function singularizeToken(token: string) {
+  if (!token) return token;
+  if (token.endsWith("es")) return token.slice(0, -2);
+  if (token.endsWith("s")) return token.slice(0, -1);
+  return token;
+}
+
+function findMentionedProcedure(query: string, procedures: Array<{ name?: string; title?: string }>) {
+  const queryNorm = normalize(query);
+  if (!queryNorm || !procedures.length) return null;
+
+  const queryTokens = normalizeTokens(queryNorm).map((t) => singularizeToken(t));
+  const asksBrace =
+    queryTokens.includes("brace") || queryNorm.includes("orthodontic") || queryNorm.includes("orthodontics");
+  let best: { proc: { name?: string; title?: string }; score: number } | null = null;
+
+  for (const proc of procedures) {
+    const name = String(proc.name || proc.title || "").trim();
+    if (!name) continue;
+    const nameNorm = normalize(name);
+    const singularNameNorm = nameNorm
+      .split(" ")
+      .map((t) => singularizeToken(t))
+      .join(" ");
+
+    if (
+      queryNorm.includes(nameNorm) ||
+      queryNorm.includes(singularNameNorm) ||
+      nameNorm.includes(queryNorm)
+    ) {
+      return proc;
+    }
+
+    if (
+      asksBrace &&
+      (nameNorm.includes("brace") ||
+        singularNameNorm.includes("brace") ||
+        nameNorm.includes("orthodontic") ||
+        nameNorm.includes("orthodontics"))
+    ) {
+      return proc;
+    }
+
+    const nameTokens = normalizeTokens(name).map((t) => singularizeToken(t));
+    const overlap = queryTokens.filter((t) => nameTokens.includes(t)).length;
+    if (overlap === 0) continue;
+
+    const score = overlap / Math.max(1, nameTokens.length);
+    if (!best || score > best.score) best = { proc, score };
+  }
+
+  if (!best || best.score < 0.5) return null;
+  return best.proc;
+}
+
 function parseFaq(text: string) {
   return text
     .split("\n\n")
@@ -92,64 +154,45 @@ function parseFaq(text: string) {
     .filter(Boolean) as Array<{ q: string; a: string }>;
 }
 
-function toQuestionLabel(normalizedMessage: string) {
-  const m = normalizedMessage;
-  if (!m || m.length < 2) return null;
+function buildTrackedQuestion(rawMessage: string) {
+  const raw = String(rawMessage || "").replace(/\s+/g, " ").trim();
+  const normalized = normalize(raw);
+  if (!raw || !normalized) return null;
   if (
-    m === "hi" ||
-    m === "hello" ||
-    m === "hey" ||
-    m.startsWith("hi ") ||
-    m.startsWith("hello ") ||
-    m.startsWith("hey ")
+    normalized === "hi" ||
+    normalized === "hello" ||
+    normalized === "hey" ||
+    normalized.startsWith("hi ") ||
+    normalized.startsWith("hello ") ||
+    normalized.startsWith("hey ")
   ) {
     return null;
   }
+  if (normalized.length < 2) return null;
 
-  if (m.includes("book") || m.includes("appointment") || m.includes("schedule") || m.includes("reserve")) {
-    return "How do I book an appointment?";
-  }
-  if (m.includes("service") || m.includes("procedure") || m.includes("treatment")) {
-    return "What services do you offer?";
-  }
-  if (m.includes("hour") || m.includes("open") || m.includes("close")) {
-    return "What are your clinic hours?";
-  }
-  if (m.includes("location") || m.includes("address") || m.includes("where") || m.includes("map")) {
-    return "Where is your clinic located?";
-  }
-  if (m.includes("cancel") || m.includes("cancell")) {
-    return "Can I cancel my appointment?";
-  }
-  if (m.includes("price") || m.includes("cost") || m.includes("fee") || m.includes("how much")) {
-    return "How much does each service cost?";
-  }
-  if (m.includes("reschedule")) {
-    return "Can I reschedule my appointment?";
-  }
-  if (m.includes("upcoming") || m.includes("my appointment") || m.includes("view appointment")) {
-    return "Can I view my upcoming appointments?";
-  }
-
-  const compact = m.replace(/\s+/g, " ").trim();
-  if (compact.length < 4) return null;
-  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
+  const keyBase = normalized.slice(0, 180);
+  const key = keyBase.replace(/\s+/g, "_");
+  const label = raw.length > 180 ? `${raw.slice(0, 177)}...` : raw;
+  return { key, label };
 }
 
-async function trackTopQuestion(normalizedMessage: string) {
+async function trackTopQuestion(rawMessage: string) {
   try {
-    const label = toQuestionLabel(normalizedMessage);
-    if (!label) return;
-
-    const key = normalize(label).replace(/\s+/g, "_").slice(0, 120);
-    if (!key) return;
+    const tracked = buildTrackedQuestion(rawMessage);
+    if (!tracked) return;
 
     const db = getFirestore();
-    const ref = db.collection("chatbot_question_stats").doc(key);
+    await db.collection("chatbot_question_logs").add({
+      key: tracked.key,
+      label: tracked.label,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    const ref = db.collection("chatbot_question_stats").doc(tracked.key);
     await ref.set(
       {
-        key,
-        label,
+        key: tracked.key,
+        label: tracked.label,
         count: FieldValue.increment(1),
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -413,7 +456,7 @@ export async function POST(req: Request) {
     const isAuthed = !!decoded;
 
     const lower = normalize(message);
-    void trackTopQuestion(lower);
+    void trackTopQuestion(message);
     const inferredLanguage = inferMessageLanguage(lower);
 
     const procedures = await listProcedures();
@@ -428,7 +471,9 @@ export async function POST(req: Request) {
       lower.includes("services") ||
       lower.includes("service") ||
       lower.includes("procedure") ||
-      lower.includes("price");
+      lower.includes("price") ||
+      lower.includes("how much") ||
+      lower.includes("payment");
 
     const wantsBooking =
       lower.includes("book") || lower.includes("appointment") || lower.includes("schedule") || lower.includes("reserve");
@@ -501,6 +546,26 @@ export async function POST(req: Request) {
     }
 
     if (wantsServices) {
+      const wantsPrice =
+        lower.includes("price") ||
+        lower.includes("cost") ||
+        lower.includes("fee") ||
+        lower.includes("how much");
+      const mentioned = wantsPrice ? findMentionedProcedure(message, procedures) : null;
+      if (wantsPrice && mentioned) {
+        const serviceName = String((mentioned as any).name || (mentioned as any).title || "this service");
+        const amount = Number((mentioned as any)?.basePrice);
+        const hasAmount = Number.isFinite(amount) && amount > 0;
+        const priceText = hasAmount
+          ? `PHP ${amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "currently not listed";
+        return NextResponse.json({
+          reply: `${displayName ? `Hi ${displayName}! ` : ""}The base price for ${serviceName} is ${priceText}. Final cost may vary after dental assessment.`,
+          languagePreference: replyLanguage,
+          rateLimit: { remaining: rl.remaining, limit: RATE_LIMIT_MAX },
+        });
+      }
+
       const list = procedureNames.length
         ? `Here are our available services:\n- ${procedureNames.join("\n- ")}`
         : "I could not load the services list right now.";

@@ -67,6 +67,9 @@ function normalize(text: string) {
     [/\bserbisyo\b/g, "service"],
     [/\bpila\b/g, "how much"],
     [/\bmagkano\b/g, "how much"],
+    [/\bmag\s*kano\b/g, "how much"],
+    [/\bmag\s*kanu\b/g, "how much"],
+    [/\bmagkanu\b/g, "how much"],
     [/\bbayad\b/g, "payment"],
     [/\bpresyo\b/g, "price"],
     [/\blugar\b/g, "location"],
@@ -137,24 +140,51 @@ function normalizeTokens(text: string) {
   return normalize(text).split(" ").filter(Boolean);
 }
 
+function singularizeToken(token: string) {
+  if (!token) return token;
+  if (token.endsWith("es")) return token.slice(0, -2);
+  if (token.endsWith("s")) return token.slice(0, -1);
+  return token;
+}
+
 function findMentionedProcedure(query: string, procedures: DentalProcedure[]) {
   const queryNorm = normalize(query);
   if (!queryNorm || !procedures.length) return null;
 
-  const queryTokens = normalizeTokens(query);
+  const queryTokens = normalizeTokens(query).map((t) => singularizeToken(t));
+  const asksBrace =
+    queryTokens.includes("brace") || queryNorm.includes("orthodontic") || queryNorm.includes("orthodontics");
   let best: { proc: DentalProcedure; score: number } | null = null;
 
   for (const proc of procedures) {
     const name = String(proc.name || "").trim();
     if (!name) continue;
     const nameNorm = normalize(name);
+    const singularNameNorm = nameNorm
+      .split(" ")
+      .map((t) => singularizeToken(t))
+      .join(" ");
     if (!nameNorm) continue;
 
-    if (queryNorm.includes(nameNorm)) {
+    if (
+      queryNorm.includes(nameNorm) ||
+      queryNorm.includes(singularNameNorm) ||
+      nameNorm.includes(queryNorm)
+    ) {
       return proc;
     }
 
-    const nameTokens = normalizeTokens(name);
+    if (
+      asksBrace &&
+      (nameNorm.includes("brace") ||
+        singularNameNorm.includes("brace") ||
+        nameNorm.includes("orthodontic") ||
+        nameNorm.includes("orthodontics"))
+    ) {
+      return proc;
+    }
+
+    const nameTokens = normalizeTokens(name).map((t) => singularizeToken(t));
     const overlap = queryTokens.filter((t) => nameTokens.includes(t)).length;
     if (overlap === 0) continue;
 

@@ -80,3 +80,19 @@ export async function PATCH(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  const authz = await requireAdmin(request);
+  if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
+
+  try {
+    const body = (await request.json()) as { id?: unknown };
+    const id = String(body?.id || "").trim();
+    if (!id) return NextResponse.json({ error: "Missing question id." }, { status: 400 });
+
+    await adminDb.collection("chatbot_question_stats").doc(id).delete();
+    return NextResponse.json({ success: true });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Failed to delete question.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
