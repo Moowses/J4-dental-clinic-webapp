@@ -252,10 +252,31 @@ export async function recordBillingPaymentAction(input: {
   if (!profile.success || !profile.data || profile.data.role === "client") {
     return { success: false, error: "Unauthorized: Staff only" };
   }
+  const amount = Number(input.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { success: false, error: "Amount must be greater than 0." };
+  }
+
+  const bill = await getBillingDetails(input.appointmentId);
+  if (!bill?.success || !bill.data) {
+    return { success: false, error: bill?.error || "Billing record not found." };
+  }
+  const remaining = Math.max(0, Number((bill.data as any).remainingBalance || 0));
+  if (remaining <= 0) {
+    return { success: false, error: "This billing record is already fully paid." };
+  }
+
+  const normalizedAmount = Number(amount.toFixed(2));
+  if (normalizedAmount > remaining + 0.01) {
+    return {
+      success: false,
+      error: `Amount cannot exceed remaining balance (${remaining.toFixed(2)}).`,
+    };
+  }
 
   return await processPayment(
     input.appointmentId,
-    Number(input.amount || 0),
+    normalizedAmount,
     String(input.method || "cash"),
     auth.currentUser.uid,
     Array.isArray(input.itemIds) ? input.itemIds : []

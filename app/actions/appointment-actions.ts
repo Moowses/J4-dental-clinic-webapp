@@ -78,8 +78,6 @@ export async function bookAppointmentAction(
   }
 
   const uid = auth.currentUser.uid;
-  const userEmail = auth.currentUser.email;
-
   return actionWrapper(
     bookingSchema,
     async (parsedData) => {
@@ -112,21 +110,6 @@ export async function bookAppointmentAction(
       if (!result.success || !result.id) {
         throw new Error(result.error || "Failed to create appointment");
       }
-
-      // 4. Send Email Notification
-        if (userEmail) {
-          await sendAppointmentConfirmationEmailAction({
-            appointmentId: result.id,
-            date: parsedData.date,
-            time: parsedData.time,
-            serviceName: parsedData.serviceType,
-            patientName:
-              parsedData.displayName ||
-              auth.currentUser?.displayName ||
-              "Patient",
-            patientEmail: userEmail,
-          });
-        }
 
       return { success: true };
     },
@@ -186,19 +169,6 @@ export async function staffBookAppointmentAction(prevState: any, data: FormData)
       throw new Error(result.error || "Failed to create appointment");
     }
 
-    // Email patient (if they have email)
-    const patientEmail = patientProfileRes.data.email;
-      if (patientEmail) {
-        await sendAppointmentConfirmationEmailAction({
-          appointmentId: result.id,
-          date: parsed.date,
-          time: parsed.time,
-          serviceName: parsed.serviceType,
-          patientName,
-          patientEmail,
-        });
-      }
-
     return { success: true };
   }, data);
 }
@@ -223,9 +193,44 @@ export async function confirmAppointmentAction(
 export async function cancelAppointmentAction(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
-  // Similar to confirm, this allows cancellation via the public link
+  const apptRes = await getAppointmentById(appointmentId);
+  if (!apptRes.success || !apptRes.data) {
+    return { success: false, error: apptRes.error || "Appointment not found." };
+  }
+
+  const appointment = apptRes.data as Appointment;
+  const status = String(appointment.status || "").toLowerCase();
+  if (status !== "pending") {
+    return { success: false, error: "Only pending appointments can be cancelled." };
+  }
+
+  const dateStr = String(appointment.date || "").trim();
+  const timeStr = String(appointment.time || "").trim();
+  if (dateStr && timeStr) {
+    const [y, m, d] = dateStr.split("-").map((v) => parseInt(v, 10));
+    const [hh, mm] = timeStr.split(":").map((v) => parseInt(v, 10));
+    if (y && m && d && !Number.isNaN(hh) && !Number.isNaN(mm)) {
+      const apptDate = new Date(y, m - 1, d, hh, mm, 0, 0);
+      const diffMs = apptDate.getTime() - Date.now();
+      const diffHours = diffMs / (1000 * 60 * 60);
+      if (diffMs < 0) {
+        return {
+          success: false,
+          error: "This appointment has already started/passed. Please call front desk.",
+        };
+      }
+      if (diffHours <= 3) {
+        return {
+          success: false,
+          error:
+            "You can't cancel your appointment 3 hours before your appointment. Please call front desk about this.",
+        };
+      }
+    }
+  }
+
   const result = await updateAppointmentStatus(appointmentId, "cancelled");
-  // updateAppointmentStatus returns void promise in service, assuming success if no throw
+  if (!result?.success) return { success: false, error: result?.error || "Failed to cancel appointment." };
   return { success: true };
 }
 
@@ -366,6 +371,33 @@ export async function updateAppointmentStatusAction(
 
   const result = await updateAppointmentStatus(appointmentId, status);
   if (!result?.success) return result;
+
+  if (status === "confirmed") {
+    try {
+      const apptRes = await getAppointmentById(appointmentId);
+      if (apptRes.success && apptRes.data) {
+        const appt = apptRes.data as Appointment;
+        const profileRes = await getUserProfile(appt.patientId);
+        const patientEmail = profileRes?.success ? profileRes.data?.email : "";
+
+        if (patientEmail) {
+          await sendAppointmentConfirmationEmailAction({
+            appointmentId: appt.id,
+            date: String(appt.date || ""),
+            time: String(appt.time || ""),
+            serviceName: String(appt.serviceType || "Dental Service"),
+            patientName:
+              (profileRes?.success && profileRes.data?.displayName) ||
+              profileRes?.data?.email ||
+              "Patient",
+            patientEmail,
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to send confirmed appointment email:", e);
+    }
+  }
 
   if (status === "no_show") {
     try {

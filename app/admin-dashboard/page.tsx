@@ -12,6 +12,7 @@ import InventoryPanel from "@/components/admin/InventoryPanel";
 import DentistSchedulePanel from "@/components/admin/DentistSchedulePanel";
 
 import StaffHRPanel from "@/components/admin/StaffHRPanel";
+import ChatbotTopQuestionsPanel from "@/components/admin/ChatbotTopQuestionsPanel";
 import ProceduresPanel from "@/components/admin/ProceduresPanel";
 
 import UpcomingAppointmentsPanel from "@/components/admin/UpcomingAppointmentsPanel";
@@ -787,7 +788,12 @@ export default function AdminDashboardPage() {
 
             {tab === "patients" && <PatientRecordsPanel />}
             {tab === "treatment-records" && canSeeTreatmentRecords && <TreatmentRecordsPanel />}
-            {tab === "staff" && isAdmin && <StaffHRPanel />}
+            {tab === "staff" && isAdmin && (
+              <div className="space-y-6">
+                <ChatbotTopQuestionsPanel />
+                <StaffHRPanel />
+              </div>
+            )}
             {tab === "procedures" && isAdmin && <ProceduresPanel />}
 
             <div className="text-center text-xs text-slate-400 py-6">

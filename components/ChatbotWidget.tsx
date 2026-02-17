@@ -24,6 +24,7 @@ type QuickAction =
   | "openBooking"
   | "openLogin"
   | "openSignup"
+  | "askQuestion"
   | "viewUpcoming"
   | "cancelStart"
   | "cancelConfirm"
@@ -34,7 +35,7 @@ type QuickAction =
   | "reset"
   | "retryServices";
 
-type Quick = { label: string; action: QuickAction };
+type Quick = { label: string; action: QuickAction; question?: string };
 
 type Msg = {
   id: string;
@@ -132,6 +133,42 @@ function formatPeso(amount?: number | null) {
   })}`;
 }
 
+function normalizeTokens(text: string) {
+  return normalize(text).split(" ").filter(Boolean);
+}
+
+function findMentionedProcedure(query: string, procedures: DentalProcedure[]) {
+  const queryNorm = normalize(query);
+  if (!queryNorm || !procedures.length) return null;
+
+  const queryTokens = normalizeTokens(query);
+  let best: { proc: DentalProcedure; score: number } | null = null;
+
+  for (const proc of procedures) {
+    const name = String(proc.name || "").trim();
+    if (!name) continue;
+    const nameNorm = normalize(name);
+    if (!nameNorm) continue;
+
+    if (queryNorm.includes(nameNorm)) {
+      return proc;
+    }
+
+    const nameTokens = normalizeTokens(name);
+    const overlap = queryTokens.filter((t) => nameTokens.includes(t)).length;
+    if (overlap === 0) continue;
+
+    const score = overlap / Math.max(1, nameTokens.length);
+    if (!best || score > best.score) {
+      best = { proc, score };
+    }
+  }
+
+  // Guardrail to avoid accidental weak matches.
+  if (!best || best.score < 0.5) return null;
+  return best.proc;
+}
+
 export default function ChatbotWidget() {
   const REPLY_DELAY_MS = 900;
   const { user } = useAuth();
@@ -184,6 +221,7 @@ export default function ChatbotWidget() {
 
   // ✅ Procedures == Services (same terms used in your modal) :contentReference[oaicite:2]{index=2}
   const [procedures, setProcedures] = useState<DentalProcedure[]>([]);
+  const proceduresRef = useRef<DentalProcedure[]>([]);
   const [procLoading, setProcLoading] = useState(false);
   const [procError, setProcError] = useState("");
 
@@ -196,35 +234,15 @@ export default function ChatbotWidget() {
   const replyQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingRepliesRef = useRef(0);
 
-  const defaultQuick: Quick[] = useMemo(() => {
-    const base: Quick[] = [
-      { label: "Show services", action: "showServices" },
-      { label: "Book appointment", action: "openBooking" },
-      { label: "View upcoming", action: "viewUpcoming" },
-      { label: "Clinic hours", action: "hours" },
-      { label: "Location", action: "location" },
-    ];
-
-    if (!isLoggedIn) {
-      // When logged out: hide booking management actions and offer sign up
-      return [
-        { label: "Show services", action: "showServices" },
-        { label: "Book appointment", action: "openBooking" },
-        { label: "Create account", action: "openSignup" },
-        { label: "Clinic hours", action: "hours" },
-        { label: "Location", action: "location" },
-      ];
-    }
-
-    return base;
-  }, [isLoggedIn]);
+  const [topQuestionQuick, setTopQuestionQuick] = useState<Quick[]>([]);
+  const [topQuestionsLoaded, setTopQuestionsLoaded] = useState(false);
 
   const [msgs, setMsgs] = useState<Msg[]>([
     {
       id: uid(),
       role: "assistant",
-      text: "Hi! I’m Tooth Fairy 🦷 What would you like to do?",
-      quick: defaultQuick,
+      text: "Hi! I’m Tooth Fairy 🦷 Ask me anything about appointments and services.",
+      quick: topQuestionQuick,
     },
   ]);
 
@@ -235,18 +253,57 @@ export default function ChatbotWidget() {
       {
         id: uid(),
         role: "assistant",
-        text: `Hi ${displayName}! I’m Tooth Fairy 🦷 How can I help today?`,
-        quick: defaultQuick,
+        text: `Hi ${displayName}! I’m Tooth Fairy 🦷 Ask me anything about appointments and services.`,
+        quick: topQuestionQuick,
       },
     ]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayName]);
+  }, [displayName, topQuestionQuick]);
 
   // Auto-scroll
   useEffect(() => {
     if (!open) return;
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs, open]);
+
+  useEffect(() => {
+    proceduresRef.current = procedures;
+  }, [procedures]);
+
+  useEffect(() => {
+    if (topQuestionsLoaded) return;
+    let cancelled = false;
+
+    const loadTopQuestions = async () => {
+      try {
+        const res = await fetch("/api/clinic-bot?limit=5");
+        if (!res.ok) return;
+        const data: any = await res.json().catch(() => null);
+        const list = Array.isArray(data?.topQuestions) ? data.topQuestions : [];
+        const labels = list
+          .map((row: any) => String(row?.label || "").trim())
+          .filter(Boolean)
+          .slice(0, 5);
+        if (!labels.length || cancelled) return;
+
+        const nextQuick = labels.map((q: string) => ({ label: q, action: "askQuestion" as const, question: q }));
+        setTopQuestionQuick(nextQuick);
+        setMsgs((prev) => {
+          if (!prev.length) return prev;
+          const first = prev[0];
+          if (first.role !== "assistant") return prev;
+          if (!String(first.text || "").toLowerCase().includes("top 5")) return prev;
+          return [{ ...first, quick: nextQuick }, ...prev.slice(1)];
+        });
+      } finally {
+        if (!cancelled) setTopQuestionsLoaded(true);
+      }
+    };
+
+    loadTopQuestions();
+    return () => {
+      cancelled = true;
+    };
+  }, [topQuestionsLoaded]);
 
   function pushUser(text: string) {
     setMsgs((m) => [...m, { id: uid(), role: "user", text }]);
@@ -284,14 +341,12 @@ export default function ChatbotWidget() {
    * - cancel-safe
    * Reference logic: BookAppointmentModal loads procedures when open and procedures empty :contentReference[oaicite:3]{index=3}
    */
-  async function ensureProceduresLoaded(force = false) {
-    if (procLoading) return;
-    if (!force && procedures.length > 0) return;
+  async function ensureProceduresLoaded(force = false): Promise<DentalProcedure[]> {
+    if (procLoading) return proceduresRef.current;
+    if (!force && proceduresRef.current.length > 0) return proceduresRef.current;
 
     setProcLoading(true);
     setProcError("");
-
-    let cancelled = false;
 
     // timeout guard so it never looks "stuck"
     const timeout = new Promise<never>((_, rej) =>
@@ -300,22 +355,22 @@ export default function ChatbotWidget() {
 
     try {
       const res: any = await Promise.race([getAllProcedures(true), timeout]);
-      if (cancelled) return;
 
       if (res?.success && Array.isArray(res?.data)) {
-        setProcedures(res.data as DentalProcedure[]);
+        const loaded = res.data as DentalProcedure[];
+        setProcedures(loaded);
+        proceduresRef.current = loaded;
+        return loaded;
       } else {
         setProcError(res?.error || "Failed to load services");
       }
     } catch (e: any) {
-      if (!cancelled) setProcError(e?.message || "Failed to load services");
+      setProcError(e?.message || "Failed to load services");
     } finally {
-      if (!cancelled) setProcLoading(false);
+      setProcLoading(false);
     }
 
-    return () => {
-      cancelled = true;
-    };
+    return proceduresRef.current;
   }
 
   const servicesContent = useMemo(() => {
@@ -458,8 +513,15 @@ export default function ChatbotWidget() {
     );
   }, [procLoading, procError, procedures]);
 
-  async function handleQuick(action: QuickAction) {
+  async function handleQuick(action: QuickAction, question?: string) {
     switch (action) {
+      case "askQuestion": {
+        const q = String(question || "").trim();
+        if (!q) return;
+        await sendFreeText(q);
+        return;
+      }
+
       case "showServices": {
         pushUser("show services");
 
@@ -654,8 +716,10 @@ export default function ChatbotWidget() {
           {
             id: uid(),
             role: "assistant",
-            text: displayName ? `Hi ${displayName}! How can I help today?` : "Hi! I’m the clinic assistant. What would you like to do?",
-            quick: defaultQuick,
+            text: displayName
+              ? `Hi ${displayName}! I’m Tooth Fairy 🦷 Ask me anything about appointments and services.`
+              : "Hi! I’m Tooth Fairy 🦷 Ask me anything about appointments and services.",
+            quick: topQuestionQuick,
           },
         ]);
         return;
@@ -663,8 +727,8 @@ export default function ChatbotWidget() {
     }
   }
 
-  async function sendFreeText() {
-    const q = input.trim();
+  async function sendFreeText(overrideText?: string) {
+    const q = String(overrideText ?? input).trim();
     if (!q || sending) return;
 
     pushUser(q);
@@ -698,14 +762,6 @@ export default function ChatbotWidget() {
       if (wantsBisaya) setLanguagePreference("bisaya");
       if (wantsTagalog) setLanguagePreference("tagalog");
 
-      const faqAnswer = findFaqAnswer(q);
-      if (faqAnswer) {
-        if (!effectiveLanguage || effectiveLanguage === "english") {
-          pushAssistant(faqAnswer);
-          return;
-        }
-      }
-
       // Local routing to avoid human error
       if (
         lower.includes("price") ||
@@ -714,12 +770,33 @@ export default function ChatbotWidget() {
         lower.includes("how much") ||
         lower.includes("hm")
       ) {
-        await ensureProceduresLoaded(false);
+        const loaded = await ensureProceduresLoaded(false);
+        const mentioned = findMentionedProcedure(q, loaded);
+        if (mentioned) {
+          const serviceName = mentioned.name || "this service";
+          const amount = (mentioned as any)?.basePrice;
+          const basePrice =
+            typeof amount === "number" && !Number.isNaN(amount) ? formatPeso(amount) : "currently not listed";
+
+          pushAssistant(
+            `The base price for ${serviceName} is ${basePrice}. Final cost may vary after dental assessment. It is best to consult the dentist so we can recommend the package that suits you.`
+          );
+          return;
+        }
+
         pushAssistant(
           "Here are our services with base prices. Prices vary depending on the service. I can help estimate after consultation.",
           { render: "servicesPrices" }
         );
         return;
+      }
+
+      const faqAnswer = findFaqAnswer(q);
+      if (faqAnswer) {
+        if (!effectiveLanguage || effectiveLanguage === "english") {
+          pushAssistant(faqAnswer);
+          return;
+        }
       }
 
       if (lower.includes("service") || lower.includes("services") || lower.includes("procedure")) {
@@ -867,7 +944,7 @@ export default function ChatbotWidget() {
                             <button
                               key={q.label}
                               type="button"
-                              onClick={() => handleQuick(q.action)}
+                              onClick={() => handleQuick(q.action, q.question)}
                               className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-95"
                             >
                               {q.label}
@@ -903,7 +980,7 @@ export default function ChatbotWidget() {
                 />
                 <button
                   type="button"
-                  onClick={sendFreeText}
+                  onClick={() => sendFreeText()}
                   disabled={sending}
                   className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >

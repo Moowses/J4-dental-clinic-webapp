@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { STATIC_KNOWLEDGE } from "@/lib/clinic/static-knowledge";
 import { getAvailabilityAction, bookAppointmentAction } from "@/app/actions/appointment-actions";
 
@@ -90,6 +90,86 @@ function parseFaq(text: string) {
       return { q: match[1].trim(), a: match[2].trim() };
     })
     .filter(Boolean) as Array<{ q: string; a: string }>;
+}
+
+function toQuestionLabel(normalizedMessage: string) {
+  const m = normalizedMessage;
+  if (!m || m.length < 2) return null;
+  if (
+    m === "hi" ||
+    m === "hello" ||
+    m === "hey" ||
+    m.startsWith("hi ") ||
+    m.startsWith("hello ") ||
+    m.startsWith("hey ")
+  ) {
+    return null;
+  }
+
+  if (m.includes("book") || m.includes("appointment") || m.includes("schedule") || m.includes("reserve")) {
+    return "How do I book an appointment?";
+  }
+  if (m.includes("service") || m.includes("procedure") || m.includes("treatment")) {
+    return "What services do you offer?";
+  }
+  if (m.includes("hour") || m.includes("open") || m.includes("close")) {
+    return "What are your clinic hours?";
+  }
+  if (m.includes("location") || m.includes("address") || m.includes("where") || m.includes("map")) {
+    return "Where is your clinic located?";
+  }
+  if (m.includes("cancel") || m.includes("cancell")) {
+    return "Can I cancel my appointment?";
+  }
+  if (m.includes("price") || m.includes("cost") || m.includes("fee") || m.includes("how much")) {
+    return "How much does each service cost?";
+  }
+  if (m.includes("reschedule")) {
+    return "Can I reschedule my appointment?";
+  }
+  if (m.includes("upcoming") || m.includes("my appointment") || m.includes("view appointment")) {
+    return "Can I view my upcoming appointments?";
+  }
+
+  const compact = m.replace(/\s+/g, " ").trim();
+  if (compact.length < 4) return null;
+  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
+}
+
+async function trackTopQuestion(normalizedMessage: string) {
+  try {
+    const label = toQuestionLabel(normalizedMessage);
+    if (!label) return;
+
+    const key = normalize(label).replace(/\s+/g, "_").slice(0, 120);
+    if (!key) return;
+
+    const db = getFirestore();
+    const ref = db.collection("chatbot_question_stats").doc(key);
+    await ref.set(
+      {
+        key,
+        label,
+        count: FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // Analytics must never block chatbot replies.
+  }
+}
+
+function mapTopQuestionRows(rows: Array<{ label: string; count: number }>, limit: number) {
+  const unique: string[] = [];
+  for (const row of rows) {
+    const label = String(row?.label || "").trim();
+    if (!label) continue;
+    if (unique.includes(label)) continue;
+    unique.push(label);
+    if (unique.length >= limit) break;
+  }
+  return unique;
 }
 
 function findFaqAnswer(message: string, faqs: Array<{ q: string; a: string }>) {
@@ -267,6 +347,39 @@ function checkRateLimit(ip: string) {
   return { allowed: true, remaining: Math.max(0, RATE_LIMIT_MAX - existing.count), retryAfterSec: 0 };
 }
 
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const limitRaw = Number(searchParams.get("limit") || 5);
+    const limit = Number.isFinite(limitRaw) ? Math.min(10, Math.max(1, Math.floor(limitRaw))) : 5;
+
+    const db = getFirestore();
+    const snap = await db
+      .collection("chatbot_question_stats")
+      .orderBy("count", "desc")
+      .limit(limit * 2)
+      .get()
+      .catch(() => null);
+
+    const rows =
+      snap?.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          label: String(data?.label || ""),
+          count: Number(data?.count || 0),
+        };
+      }) || [];
+
+    const labels = mapTopQuestionRows(rows, limit);
+    return NextResponse.json({
+      topQuestions: labels.map((label, idx) => ({ rank: idx + 1, label })),
+      source: rows.length ? "analytics" : "empty",
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Failed to load top questions" }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const clientIp = getClientIp(req);
@@ -300,6 +413,7 @@ export async function POST(req: Request) {
     const isAuthed = !!decoded;
 
     const lower = normalize(message);
+    void trackTopQuestion(lower);
     const inferredLanguage = inferMessageLanguage(lower);
 
     const procedures = await listProcedures();

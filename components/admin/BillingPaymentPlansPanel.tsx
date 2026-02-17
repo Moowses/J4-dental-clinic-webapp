@@ -476,6 +476,68 @@ export default function BillingPaymentPlansPanel({
     return Number(sum.toFixed(2));
   }, [bill, items, selectedItemIds]);
 
+  const paymentValidation = useMemo(() => {
+    if (!bill) return { canSubmit: false, error: "No billing record selected.", hint: "" };
+    if (isPaidView) return { canSubmit: false, error: "Paid records are view only.", hint: "" };
+
+    const selectedMode = selectedItemIds.length > 0;
+    const expected = selectedMode ? selectedRemainingTotal : Number(totals.remaining || 0);
+    const maxAllowed = Number(totals.remaining || 0);
+    const raw = String(payAmount || "").trim();
+
+    if (!raw) {
+      return {
+        canSubmit: false,
+        error: "Enter payment amount.",
+        hint: selectedMode
+          ? `Exact required for selected items: ${expected.toFixed(2)}`
+          : `Max allowed: ${maxAllowed.toFixed(2)}`,
+      };
+    }
+
+    const parsed = parsePaymentAmount(raw);
+    if (!parsed.ok) return { canSubmit: false, error: parsed.error, hint: "" };
+
+    const value = parsed.value;
+    if (value > maxAllowed + 0.01) {
+      return {
+        canSubmit: false,
+        error: `Amount cannot exceed remaining balance (${maxAllowed.toFixed(2)}).`,
+        hint: "",
+      };
+    }
+
+    if (selectedMode) {
+      if (expected <= 0) {
+        return { canSubmit: false, error: "Selected items have no payable balance.", hint: "" };
+      }
+      if (Math.abs(value - expected) > 0.01) {
+        return {
+          canSubmit: false,
+          error: `Selected-item payment must be exactly ${expected.toFixed(2)}.`,
+          hint: "",
+        };
+      }
+    }
+
+    return {
+      canSubmit: true,
+      error: "",
+      hint: selectedMode
+        ? `Selected-item amount is valid (${expected.toFixed(2)}).`
+        : `Valid amount. Remaining balance: ${maxAllowed.toFixed(2)}.`,
+    };
+  }, [bill, isPaidView, payAmount, selectedItemIds.length, selectedRemainingTotal, totals.remaining]);
+
+  function parsePaymentAmount(raw: string): { ok: true; value: number } | { ok: false; error: string } {
+    const text = String(raw || "").trim();
+    if (!text) return { ok: false, error: "Please enter an amount." };
+    const value = Number(text);
+    if (!Number.isFinite(value)) return { ok: false, error: "Amount must be a valid number." };
+    if (value <= 0) return { ok: false, error: "Amount must be greater than 0." };
+    return { ok: true, value: Number(value.toFixed(2)) };
+  }
+
   function openConfirmPayment(fullBalance: boolean) {
     if (isPaidView) {
       setErr("Paid records are view only.");
@@ -484,9 +546,14 @@ export default function BillingPaymentPlansPanel({
     if (!bill) return;
     setErr(null);
 
-    const amount = Number(payAmount || 0);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setErr("Please enter a valid payment amount.");
+    const parsedAmount = parsePaymentAmount(payAmount);
+    if (!parsedAmount.ok) {
+      setErr(parsedAmount.error);
+      return;
+    }
+    const amount = parsedAmount.value;
+    if (amount > Number(totals.remaining || 0) + 0.01) {
+      setErr(`Amount cannot exceed remaining balance (${Number(totals.remaining || 0).toFixed(2)}).`);
       return;
     }
 
@@ -498,6 +565,10 @@ export default function BillingPaymentPlansPanel({
     }
 
     if (!fullBalance && selectedItemIds.length) {
+      if (selectedRemainingTotal <= 0) {
+        setErr("Selected items have no payable balance.");
+        return;
+      }
       if (Math.abs(amount - selectedRemainingTotal) > 0.01) {
         setErr("Amount must match the selected items remaining balance.");
         return;
@@ -907,21 +978,36 @@ export default function BillingPaymentPlansPanel({
                         <div className="mt-3 flex gap-2">
                           <input
                             value={payAmount}
-                            onChange={(e) => setPayAmount(e.target.value)}
+                            onChange={(e) => {
+                              setPayAmount(e.target.value);
+                              setErr(null);
+                            }}
                             placeholder="Partial amount"
                             className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                             type="number"
-                            min={0}
+                            min={0.01}
                             step={0.01}
                             disabled={busy || isPaidView}
                           />
                           <button
-                            disabled={busy || isPaidView}
+                            disabled={busy || isPaidView || !paymentValidation.canSubmit}
                             onClick={() => openConfirmPayment(false)}
                             className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                            title={!paymentValidation.canSubmit ? paymentValidation.error : ""}
                           >
                             Pay
                           </button>
+                        </div>
+                        <div
+                          className={`mt-2 text-xs ${
+                            paymentValidation.error
+                              ? "text-red-600"
+                              : paymentValidation.canSubmit
+                              ? "text-emerald-700"
+                              : "text-slate-500"
+                          }`}
+                        >
+                          {paymentValidation.error || paymentValidation.hint}
                         </div>
 
                         <textarea
@@ -936,17 +1022,31 @@ export default function BillingPaymentPlansPanel({
                           <div className="text-xs text-slate-500">
                             Selected items remaining: ₱ {money(selectedRemainingTotal)}
                           </div>
-                          <button
-                            disabled={busy || isPaidView}
-                            onClick={() => {
-                              setSelectedItemIds([]);
-                              setPayAmount(String(Number(totals.remaining || 0).toFixed(2)));
-                              setErr(null);
-                            }}
-                            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-extrabold hover:bg-slate-800 disabled:opacity-60"
-                          >
-                            Pay full balance
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {!!selectedItemIds.length && (
+                              <button
+                                disabled={busy || isPaidView || selectedRemainingTotal <= 0}
+                                onClick={() => {
+                                  setPayAmount(String(Number(selectedRemainingTotal || 0).toFixed(2)));
+                                  setErr(null);
+                                }}
+                                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                              >
+                                Use selected balance
+                              </button>
+                            )}
+                            <button
+                              disabled={busy || isPaidView}
+                              onClick={() => {
+                                setSelectedItemIds([]);
+                                setPayAmount(String(Number(totals.remaining || 0).toFixed(2)));
+                                setErr(null);
+                              }}
+                              className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-extrabold hover:bg-slate-800 disabled:opacity-60"
+                            >
+                              Pay full balance
+                            </button>
+                          </div>
                         </div>
 
                         <div className="mt-3">

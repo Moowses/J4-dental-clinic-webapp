@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { getUserAppointments } from "@/lib/services/appointment-service";
 import { getPatientRecord } from "@/lib/services/patient-service";
 import { updatePatientRecordAction } from "@/app/actions/auth-actions";
-import { cancelAppointmentAction, confirmAppointmentAction } from "@/app/actions/appointment-actions";
+import { cancelAppointmentAction } from "@/app/actions/appointment-actions";
 import { getPatientTreatmentHistoryAction } from "@/app/actions/appointment-admin-actions";
 import { updateUserDocument } from "@/lib/services/user-service";
 import { updateUserProfile } from "@/lib/services/auth-service";
@@ -70,7 +70,6 @@ function AppointmentsTable({
   onAddAppointment,
   onOpenModal,
   onReschedule,
-  onConfirm,
   onCancel,
   getCancelDisabledReason,
 }: {
@@ -79,8 +78,6 @@ function AppointmentsTable({
   onAddAppointment: () => void;
   onOpenModal: (appt: Appointment, tab: AppointmentModalTab) => void;
   onReschedule: (appt: Appointment) => void;
-  onConfirm: (appt: Appointment) => void;
-
   onCancel: (appt: Appointment) => void;
   getCancelDisabledReason: (appt: Appointment) => string | null;
 }) {
@@ -169,8 +166,8 @@ function AppointmentsTable({
                   onView={() => onOpenModal(appt, "details")}
                   onTransactions={() => onOpenModal(appt, "transactions")}
                   onReschedule={() => onReschedule(appt)}
-                  onConfirm={() => onConfirm(appt)}
                   onCancel={() => onCancel(appt)}
+                  cancelDisabledReason={getCancelDisabledReason(appt)}
                 />
               </div>
             </div>
@@ -213,8 +210,8 @@ function AppointmentsTable({
                     onView={() => onOpenModal(appt, "details")}
                     onTransactions={() => onOpenModal(appt, "transactions")}
                     onReschedule={() => onReschedule(appt)}
-                    onConfirm={() => onConfirm(appt)}
                     onCancel={() => onCancel(appt)}
+                    cancelDisabledReason={getCancelDisabledReason(appt)}
                    
                   />
                 </td>
@@ -1298,7 +1295,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     }
 
     if (diffHours <= 3) {
-      return "You canâ€™t cancel your appointment 3 hours before your appointment. Please call front desk about this.";
+      return "You can't cancel your appointment 3 hours before your appointment. Please call front desk about this.";
     }
 
     return null;
@@ -1306,7 +1303,10 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
 
   async function handleCancelAppointment(appt: Appointment) {
     const reason = getCancelDisabledReason(appt);
-    if (reason) return;
+    if (reason) {
+      alert(reason);
+      return;
+    }
 
     const id = String((appt as any).id || "");
     if (!id) return;
@@ -1320,25 +1320,6 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
       await refreshAppointments();
     } catch (e: any) {
       alert(e?.message || "Failed to cancel appointment.");
-    }
-  }
-
-  async function handleConfirmAppointment(appt: Appointment) {
-    const status = String((appt as any).status || "").toLowerCase();
-    if (status !== "pending") return;
-
-    const id = String((appt as any).id || "");
-    if (!id) return;
-
-    try {
-      const res = await confirmAppointmentAction(id);
-      if (!res?.success) {
-        alert(res?.error || "Failed to confirm appointment.");
-        return;
-      }
-      await refreshAppointments();
-    } catch (e: any) {
-      alert(e?.message || "Failed to confirm appointment.");
     }
   }
 
@@ -1532,7 +1513,6 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                 onAddAppointment={() => setOpenBooking(true)}
                 onOpenModal={openModal}
                 onReschedule={handleOpenReschedule}
-                onConfirm={handleConfirmAppointment}
                 onCancel={handleCancelAppointment}
                 getCancelDisabledReason={getCancelDisabledReason}
               />

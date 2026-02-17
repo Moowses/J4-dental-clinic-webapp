@@ -8,18 +8,17 @@ export default function AppointmentRowActions({
   onView,
   onTransactions,
   onReschedule,
-  onConfirm,
   onCancel,
+  cancelDisabledReason,
 }: {
   appointment: Appointment;
   onView: () => void;
   onTransactions: () => void;
   onReschedule: () => void;
-  onConfirm: () => void;
   onCancel: () => void;
+  cancelDisabledReason?: string | null;
 }) {
   const status = String(appointment.status || "").toLowerCase();
-  const canConfirm = status === "pending";
   const canCancel = status === "pending";
   const canReschedule = status === "pending";
   const canTransactions = status === "completed" && !!appointment.treatment;
@@ -58,15 +57,15 @@ export default function AppointmentRowActions({
             </button>
           )}
           <button
-            className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
-            onClick={onConfirm}
-            disabled={!canConfirm}
-          >
-            Confirm
-          </button>
-          <button
-            className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+            className={[
+              "rounded-lg px-3 py-2 text-xs font-bold",
+              cancelDisabledReason
+                ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                : "bg-red-50 text-red-700 hover:bg-red-100",
+            ].join(" ")}
             onClick={onCancel}
+            disabled={Boolean(cancelDisabledReason)}
+            title={cancelDisabledReason || ""}
           >
             Cancel
           </button>

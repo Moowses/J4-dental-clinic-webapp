@@ -19,7 +19,7 @@ interface AppointmentConfirmationProps {
   serviceName: string;
   appointmentId: string;
   clinicName?: string;
-  confirmUrl: string;
+  appointmentDetailsUrl: string;
   isRescheduled?: boolean;
   previousDate?: string;
   previousTime?: string;
@@ -33,7 +33,7 @@ export const AppointmentConfirmationEmail = ({
   serviceName,
   appointmentId,
   clinicName = "Dental Clinic",
-  confirmUrl,
+  appointmentDetailsUrl,
   isRescheduled = false,
   previousDate,
   previousTime,
@@ -43,12 +43,12 @@ export const AppointmentConfirmationEmail = ({
     <Html>
       <Head />
       <Preview>
-        {isRescheduled ? "Appointment Rescheduled" : "Confirm your appointment"} at {clinicName}
+        {isRescheduled ? "Appointment Rescheduled" : "Appointment Confirmed"} at {clinicName}
       </Preview>
       <Body style={main}>
         <Container style={container}>
           <Heading style={h1}>
-            {isRescheduled ? "Appointment Rescheduled" : "Appointment Confirmation"}
+            {isRescheduled ? "Appointment Rescheduled" : "Appointment Confirmed"}
           </Heading>
           <Text style={text}>Hi {patientName},</Text>
           <Text style={text}>
@@ -71,17 +71,20 @@ export const AppointmentConfirmationEmail = ({
           </Section>
 
           <Text style={text}>
-            Please confirm your attendance by clicking the button below. This helps us ensure your slot is reserved.
+            Your appointment has been approved by the clinic team. No further confirmation is required from your side.
           </Text>
 
           <Section style={buttonContainer}>
-            <Button style={button} href={confirmUrl}>
-              Confirm Appointment
+            <Button style={button} href={appointmentDetailsUrl}>
+              View Appointment
             </Button>
           </Section>
           
           <Text style={text}>
             We have attached a calendar invite to this email. Please add it to your calendar!
+          </Text>
+          <Text style={text}>
+            Policy: Cancellations are not allowed within 3 hours before your appointment time.
           </Text>
 
           <Hr style={hr} />

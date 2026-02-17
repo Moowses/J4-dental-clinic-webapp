@@ -177,6 +177,17 @@ export async function processPayment(
     if (!Number.isFinite(amount) || amount <= 0) {
       return { success: false, error: "Invalid amount" };
     }
+    const normalizedAmount = Number(Number(amount).toFixed(2));
+    const currentRemaining = Math.max(0, Number(current.remainingBalance || 0));
+    if (currentRemaining <= 0) {
+      return { success: false, error: "This billing record is already fully paid." };
+    }
+    if (normalizedAmount > currentRemaining + 0.01) {
+      return {
+        success: false,
+        error: `Amount exceeds remaining balance (${currentRemaining.toFixed(2)}).`,
+      };
+    }
 
     const hasItems = Array.isArray(current.items) && current.items.length > 0;
 
@@ -216,6 +227,25 @@ export async function processPayment(
       if (alreadyExcluded) {
         return { success: false, error: "Selected items are already settled" };
       }
+      const selectedRemaining = payableTargets
+        .filter((it: any) => !isExcluded(it.status))
+        .reduce((sum: number, it: any) => sum + Number(it?.price || 0), 0);
+      if (!Number.isFinite(selectedRemaining) || selectedRemaining <= 0) {
+        return { success: false, error: "Selected items have no payable balance." };
+      }
+      if (normalizedAmount > selectedRemaining + 0.01) {
+        return {
+          success: false,
+          error: `Amount exceeds selected items balance (${selectedRemaining.toFixed(2)}).`,
+        };
+      }
+      // Item-mode marks selected items fully paid, so amount must match selected payable total.
+      if (Math.abs(normalizedAmount - selectedRemaining) > 0.01) {
+        return {
+          success: false,
+          error: `Amount must match selected items balance (${selectedRemaining.toFixed(2)}).`,
+        };
+      }
 
       // 2) Mark selected items as paid
       const updatedItems = current.items.map((it: any) => {
@@ -246,7 +276,7 @@ export async function processPayment(
         // NOTE: crypto.randomUUID() fails on non-secure origins (e.g. http://<public-ip>)
         // while http://localhost is treated as secure. Use a Firestore-style auto id instead.
         id: doc(collection(db, "_ids")).id,
-        amount,
+        amount: normalizedAmount,
         method,
         date: Timestamp.now(),
         recordedBy: staffId || "system",
@@ -284,7 +314,7 @@ export async function processPayment(
 
     // --- LEGACY AMOUNT-BASED MODE (no itemIds) ---
     // This keeps old flows working even if items are missing.
-    const newBalance = Math.max(0, Number(current.remainingBalance || 0) - Number(amount || 0));
+    const newBalance = Math.max(0, Number(current.remainingBalance || 0) - normalizedAmount);
     const totalAmount = Number(current.totalAmount || 0);
 
     const status =
@@ -298,7 +328,7 @@ export async function processPayment(
       Array.isArray(current?.paymentPlan?.installments) && current.paymentPlan.installments.length > 0;
     const transaction: any = {
       id: crypto.randomUUID(),
-      amount,
+      amount: normalizedAmount,
       method,
       date: Timestamp.now(),
       recordedBy: staffId || "system",

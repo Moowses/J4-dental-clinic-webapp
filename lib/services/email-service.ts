@@ -55,7 +55,7 @@ export async function sendAppointmentEmail(details: EmailAppointmentDetails, api
     title: `Dental Appointment: ${details.serviceName}`,
     description: `Appointment for ${details.patientName}. Reference ID: ${details.id}`,
     location: 'Dental Clinic, 123 Dental Street',
-    url: `${APP_URL}/appointment/confirm/${details.id}`,
+    url: `${APP_URL}/client-dashboard`,
     status: 'CONFIRMED',
     busyStatus: 'BUSY',
     organizer: { name: 'Dental Clinic', email: 'no-reply@dentalclinic.com' },
@@ -73,7 +73,7 @@ export async function sendAppointmentEmail(details: EmailAppointmentDetails, api
 
   try {
     const icsContent = await icsFilePromise;
-    const confirmUrl = `${APP_URL}/appointment/confirm/${details.id}`;
+    const appointmentDetailsUrl = `${APP_URL}/client-dashboard`;
 
     // 2. Render Email HTML
     const emailHtml = await render(
@@ -83,7 +83,7 @@ export async function sendAppointmentEmail(details: EmailAppointmentDetails, api
         time: details.time,
         serviceName: details.serviceName,
         appointmentId: details.id,
-        confirmUrl: confirmUrl,
+        appointmentDetailsUrl,
         isRescheduled: details.isRescheduled,
         previousDate: details.previousDate,
         previousTime: details.previousTime,
