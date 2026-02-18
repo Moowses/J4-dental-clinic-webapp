@@ -1133,18 +1133,18 @@ function TreatmentModal({
             {/* Bottom actions */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
+                onClick={onClose}
+                className="w-full rounded-xl bg-rose-600 py-2.5 text-white text-sm font-black hover:bg-rose-700 transition"
+              >
+                Cancel
+              </button>
+
+              <button
                 onClick={() => setConfirmOpen(true)}
                 disabled={isSaving || procList.length === 0}
                 className="w-full rounded-xl bg-emerald-700 py-2.5 text-white text-sm font-black hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
                 {isSaving ? "Finalizing Treatment..." : "Finalize Treatment"}
-              </button>
-
-              <button
-                onClick={onClose}
-                className="w-full rounded-xl bg-rose-600 py-2.5 text-white text-sm font-black hover:bg-rose-700 transition"
-              >
-                Cancel
               </button>
             </div>
         </div>
