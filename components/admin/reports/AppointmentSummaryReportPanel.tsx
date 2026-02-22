@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import ReportShell from "./ReportShell";
 import { getUserDisplayNameByUid } from "@/lib/services/user-service";
+import { isNoShowAppointmentStatus } from "@/lib/status-normalizers";
 
 // TODO: implement this action
 import { getAppointmentsInRange } from "@/app/actions/appointment-actions";
@@ -22,7 +23,6 @@ type AppointmentReportResponse = {
 type Preset = "7d" | "30d" | "thisMonth" | "lastMonth";
 
 export default function AppointmentSummaryReportPanel() {
-  const [ready, setReady] = useState(false);
   const [preset, setPreset] = useState<Preset>("thisMonth");
   const [customRange, setCustomRange] = useState<{ from: string; to: string } | null>(null);
   const [fromDate, setFromDate] = useState<string>("");
@@ -72,7 +72,6 @@ export default function AppointmentSummaryReportPanel() {
   }, [preset, customRange]);
 
   useEffect(() => {
-    if (!ready) return;
     let cancelled = false;
     setErr(null);
 
@@ -89,7 +88,7 @@ export default function AppointmentSummaryReportPanel() {
     return () => {
       cancelled = true;
     };
-  }, [fromISO, toISO, ready]);
+  }, [fromISO, toISO]);
 
   const rows = data?.rows ?? [];
   const tooManyRows = rows.length > 2000;
@@ -99,7 +98,7 @@ export default function AppointmentSummaryReportPanel() {
     [rows]
   );
   const noShowCount = useMemo(
-    () => rows.filter((r) => String(r.status || "").toLowerCase() === "no-show").length,
+    () => rows.filter((r) => isNoShowAppointmentStatus(r.status)).length,
     [rows]
   );
   const totalProcedures = useMemo(() => {
@@ -121,7 +120,6 @@ export default function AppointmentSummaryReportPanel() {
   }
 
   useEffect(() => {
-    if (!ready) return;
     if (tooManyRows) {
       if (dentistStats.length) setDentistStats([]);
       return;
@@ -165,7 +163,7 @@ export default function AppointmentSummaryReportPanel() {
     return () => {
       cancelled = true;
     };
-  }, [rows, tooManyRows, ready, dentistStats.length]);
+  }, [rows, tooManyRows, dentistStats.length]);
 
   if (err) {
     return (
@@ -175,25 +173,6 @@ export default function AppointmentSummaryReportPanel() {
         empty={{ title: "Error loading report", description: err }}
       >
         <div />
-      </ReportShell>
-    );
-  }
-
-  if (!ready) {
-    return (
-      <ReportShell
-        reportName="Appointment Summary Report"
-        subtitle={subtitle}
-      >
-        <div className="flex flex-col items-center gap-3">
-          <p className="text-sm text-slate-600">Click generate to load the report.</p>
-          <button
-            onClick={() => setReady(true)}
-            className="rounded-full px-5 py-2 text-sm font-extrabold bg-slate-900 text-white hover:bg-slate-800"
-          >
-            Generate Report
-          </button>
-        </div>
       </ReportShell>
     );
   }

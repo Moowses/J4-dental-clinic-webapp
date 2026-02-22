@@ -7,6 +7,7 @@ import { getBillingReport, getBillingReportByRange } from "@/app/actions/billing
 import { db } from "@/lib/firebase/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { getUserDisplayNameByUid } from "@/lib/services/user-service";
+import { normalizeBillingStatus } from "@/lib/status-normalizers";
 
 type BillingRow = {
   id: string;
@@ -77,6 +78,17 @@ type BillingInsights = {
   openInstallments: number;
   overdueInstallments: number;
   dentistIncome: Array<{ dentistId: string; dentistName: string; collected: number; procedures: number }>;
+  collectionRatePct: number;
+  outstandingTotal: number;
+  dentistPerformance: Array<{
+    dentistId: string;
+    dentistName: string;
+    billed: number;
+    collected: number;
+    outstanding: number;
+    procedures: number;
+    collectionRatePct: number;
+  }>;
   totalProcedures: number;
 };
 
@@ -108,6 +120,45 @@ function money(n: number) {
   })}`;
 }
 
+function KpiCard({ label, value }: { label: string; value: string | number }) {
+  const rawText = String(value);
+  const text = rawText;
+  const compact = rawText.length >= 12;
+  const extraCompact = rawText.length >= 15;
+  const ultraCompact = rawText.length >= 18;
+
+  return (
+    <div className="flex min-h-[88px] min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 text-right">
+      <p className="text-xs font-bold leading-tight text-slate-500">{label}</p>
+      <p
+        title={rawText}
+        className={[
+          "mt-2 min-w-0 whitespace-nowrap font-extrabold leading-none tracking-tight text-slate-900",
+          "[font-variant-numeric:tabular-nums]",
+          ultraCompact
+            ? "text-xs md:text-sm"
+            : extraCompact
+            ? "text-sm md:text-base"
+            : compact
+            ? "text-base md:text-lg"
+            : "text-lg",
+        ].join(" ")}
+        style={{
+          fontSize: ultraCompact
+            ? "clamp(0.68rem, 0.35vw + 0.56rem, 0.86rem)"
+            : extraCompact
+            ? "clamp(0.82rem, 0.55vw + 0.62rem, 1rem)"
+            : compact
+            ? "clamp(0.9rem, 0.7vw + 0.62rem, 1.12rem)"
+            : "clamp(1rem, 1vw + 0.65rem, 1.35rem)",
+        }}
+      >
+        {text}
+      </p>
+    </div>
+  );
+}
+
 function normalizeBillingReport(raw: any): BillingReportResponse {
   if (raw?.rows && raw?.summary) return raw as BillingReportResponse;
 
@@ -119,7 +170,7 @@ function normalizeBillingReport(raw: any): BillingReportResponse {
     patientName: r.patientName ?? r.patient_name,
     totalAmount: Number(r.totalAmount ?? r.total ?? r.amount ?? 0),
     remainingBalance: Number(r.remainingBalance ?? r.remaining ?? r.outstanding ?? 0),
-    status: String(r.status ?? r.paymentStatus ?? "unpaid"),
+    status: normalizeBillingStatus(String(r.status ?? r.paymentStatus ?? "unpaid")),
     createdAt: r.createdAt?.toDate?.()?.toISOString?.() ?? r.createdAt ?? r.created_at,
   }));
 
@@ -191,7 +242,6 @@ async function resolvePatientLabel(
 }
 
 export default function BillingReportPanel() {
-  const [ready, setReady] = useState(false);
   const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30);
   const [customRange, setCustomRange] = useState<{ from: string; to: string } | null>(null);
   const [fromDate, setFromDate] = useState<string>("");
@@ -199,7 +249,7 @@ export default function BillingReportPanel() {
   const [data, setData] = useState<BillingReportResponse | null>(null);
   const [txns, setTxns] = useState<TxnRow[]>([]);
   const [insights, setInsights] = useState<BillingInsights | null>(null);
-  const [view, setView] = useState<"transactions" | "bills">("transactions");
+  const [view, setView] = useState<"transactions" | "bills">("bills");
 
   const [err, setErr] = useState<string | null>(null);
   const [detailsErr, setDetailsErr] = useState<string | null>(null);
@@ -265,7 +315,6 @@ export default function BillingReportPanel() {
 
   // Load summary report + enrich rows with patientName
   useEffect(() => {
-    if (!ready) return;
     let cancelled = false;
     setErr(null);
     setDetailsErr(null);
@@ -280,9 +329,9 @@ export default function BillingReportPanel() {
           : await getBillingReport(rangeDays);
         const res = normalizeBillingReport(raw);
 
-        const tooManyRows = res.rows.length > 300;
+        const tooManyRows = res.rows.length > 120;
         if (tooManyRows) {
-          setDetailsErr("Large dataset: patient names are abbreviated. Narrow the date range for full details.");
+          setDetailsErr("Large dataset: patient names are abbreviated to reduce Firebase reads. Narrow the date range for full details.");
         }
 
         const cache = new Map<string, string>();
@@ -310,11 +359,16 @@ export default function BillingReportPanel() {
     return () => {
       cancelled = true;
     };
-  }, [rangeDays, ready, customRange]);
+  }, [rangeDays, customRange]);
 
   // Build transaction log by fetching billing_records doc details
   useEffect(() => {
-    if (!ready) return;
+    if (view !== "transactions") {
+      setTxns([]);
+      setInsights(null);
+      setDetailsErr(null);
+      return;
+    }
     if (!data?.rows?.length) {
       setTxns([]);
       setInsights(null);
@@ -340,7 +394,10 @@ export default function BillingReportPanel() {
         const all: TxnRow[] = [];
         const methodTotals = new Map<string, number>();
         const procedureTotals = new Map<string, number>();
-        const dentistTotals = new Map<string, { dentistId: string; collected: number; procedures: number }>();
+        const dentistTotals = new Map<
+          string,
+          { dentistId: string; billed: number; collected: number; outstanding: number; procedures: number }
+        >();
         const appointmentCache = new Map<string, any>();
         let collectedTotal = 0;
         let procedureCollected = 0;
@@ -492,10 +549,14 @@ export default function BillingReportPanel() {
           if (dentistId) {
             const prev = dentistTotals.get(dentistId) ?? {
               dentistId,
+              billed: 0,
               collected: 0,
+              outstanding: 0,
               procedures: 0,
             };
+            prev.billed += Number(row.totalAmount || 0);
             prev.collected += appointmentCollected;
+            prev.outstanding += Number(row.remainingBalance || 0);
             prev.procedures += proceduresCount;
             dentistTotals.set(dentistId, prev);
           }
@@ -521,6 +582,23 @@ export default function BillingReportPanel() {
               return { ...d, dentistName: name };
             })
           );
+          const billedTotal = data.rows.reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
+          const outstandingTotal = data.rows.reduce((sum, r) => sum + Number(r.remainingBalance || 0), 0);
+          const collectionRatePct = billedTotal > 0 ? (collectedTotal / billedTotal) * 100 : 0;
+          const dentistPerformance = dentistIncome.map((d) => {
+            const raw = dentistTotals.get(d.dentistId);
+            const billed = Number(raw?.billed || 0);
+            const outstanding = Number(raw?.outstanding || 0);
+            return {
+              dentistId: d.dentistId,
+              dentistName: d.dentistName,
+              billed,
+              collected: d.collected,
+              outstanding,
+              procedures: d.procedures,
+              collectionRatePct: billed > 0 ? (d.collected / billed) * 100 : 0,
+            };
+          });
 
           setTxns(all);
           setInsights({
@@ -532,6 +610,11 @@ export default function BillingReportPanel() {
             overdueInstallments,
             dentistIncome: dentistIncome.sort(
               (a, b) => b.collected - a.collected || b.procedures - a.procedures
+            ),
+            collectionRatePct,
+            outstandingTotal,
+            dentistPerformance: dentistPerformance.sort(
+              (a, b) => b.billed - a.billed || b.collected - a.collected
             ),
             totalProcedures,
           });
@@ -545,14 +628,16 @@ export default function BillingReportPanel() {
     return () => {
       cancelled = true;
     };
-  }, [data, ready]);
+  }, [data, view]);
 
   const empty =
     !data || data.rows.length === 0
       ? {
-          title: pending ? "Loading report" : "No billing records found",
+          title: !data || pending ? "Loading report" : "No billing records found",
           description: pending
             ? "Please wait while we generate the report."
+            : !data
+            ? "Loading the default date range."
             : "Try expanding the date range.",
         }
       : undefined;
@@ -565,25 +650,6 @@ export default function BillingReportPanel() {
         empty={{ title: "Error loading report", description: err }}
       >
         <div />
-      </ReportShell>
-    );
-  }
-
-  if (!ready) {
-    return (
-      <ReportShell
-        reportName="Billing & Collections Report"
-        subtitle={subtitle}
-      >
-        <div className="flex flex-col items-center gap-3">
-          <p className="text-sm text-slate-600">Click generate to load the report.</p>
-          <button
-            onClick={() => setReady(true)}
-            className="rounded-full px-5 py-2 text-sm font-extrabold bg-slate-900 text-white hover:bg-slate-800"
-          >
-            Generate Report
-          </button>
-        </div>
       </ReportShell>
     );
   }
@@ -707,43 +773,15 @@ export default function BillingReportPanel() {
 
           {insights ? (
             <div className="space-y-3">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-bold text-slate-500">Collected Total</p>
-                  <p className="mt-1 text-lg font-extrabold text-slate-900">
-                    {money(insights.collectedTotal)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-bold text-slate-500">Procedure Collected</p>
-                  <p className="mt-1 text-lg font-extrabold text-slate-900">
-                    {money(insights.collectedByType.procedure)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-bold text-slate-500">Installment Collected</p>
-                  <p className="mt-1 text-lg font-extrabold text-slate-900">
-                    {money(insights.collectedByType.installment)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-bold text-slate-500">Open Installments</p>
-                  <p className="mt-1 text-lg font-extrabold text-slate-900">
-                    {insights.openInstallments}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-bold text-slate-500">Overdue Installments</p>
-                  <p className="mt-1 text-lg font-extrabold text-slate-900">
-                    {insights.overdueInstallments}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-bold text-slate-500">Procedures (completed)</p>
-                  <p className="mt-1 text-lg font-extrabold text-slate-900">
-                    {insights.totalProcedures}
-                  </p>
-                </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4 xl:grid-cols-6">
+                <KpiCard label="Collected Total" value={money(insights.collectedTotal)} />
+                <KpiCard label="Procedure Collected" value={money(insights.collectedByType.procedure)} />
+                <KpiCard label="Installment Collected" value={money(insights.collectedByType.installment)} />
+                <KpiCard label="Collection Rate" value={`${insights.collectionRatePct.toFixed(1)}%`} />
+                <KpiCard label="Outstanding Total" value={money(insights.outstandingTotal)} />
+                <KpiCard label="Open Installments" value={insights.openInstallments} />
+                <KpiCard label="Overdue Installments" value={insights.overdueInstallments} />
+                <KpiCard label="Procedures (completed)" value={insights.totalProcedures} />
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -844,6 +882,44 @@ export default function BillingReportPanel() {
                         <tr>
                           <td className="px-4 py-3 text-slate-500" colSpan={3}>
                             No dentist income data.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-extrabold text-slate-900">Dentist Production vs Collections</p>
+                <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50">
+                      <tr className="text-left text-slate-600">
+                        <th className="px-4 py-3 font-bold">Dentist</th>
+                        <th className="px-4 py-3 font-bold">Billed</th>
+                        <th className="px-4 py-3 font-bold">Collected</th>
+                        <th className="px-4 py-3 font-bold">Outstanding</th>
+                        <th className="px-4 py-3 font-bold">Collection Rate</th>
+                        <th className="px-4 py-3 font-bold">Procedures</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {insights.dentistPerformance.length ? (
+                        insights.dentistPerformance.map((d) => (
+                          <tr key={`${d.dentistId}-perf`} className="border-t border-slate-200">
+                            <td className="px-4 py-3 font-semibold text-slate-900">{d.dentistName}</td>
+                            <td className="px-4 py-3 text-slate-700">{money(d.billed)}</td>
+                            <td className="px-4 py-3 text-slate-700">{money(d.collected)}</td>
+                            <td className="px-4 py-3 text-slate-700">{money(d.outstanding)}</td>
+                            <td className="px-4 py-3 text-slate-700">{d.collectionRatePct.toFixed(1)}%</td>
+                            <td className="px-4 py-3 text-slate-700">{d.procedures}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td className="px-4 py-3 text-slate-500" colSpan={6}>
+                            No dentist production data.
                           </td>
                         </tr>
                       )}

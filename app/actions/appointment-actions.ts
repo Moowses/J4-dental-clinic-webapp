@@ -557,6 +557,13 @@ export async function getAppointmentsInRange({
   fromISO,
   toISO,
 }: GetAppointmentsInRangeInput) {
+  const { auth } = await import("@/lib/firebase/firebase");
+  if (!auth.currentUser) throw new Error("Not authenticated");
+
+  const profile = await getUserProfile(auth.currentUser.uid);
+  if (!profile.success || !profile.data) throw new Error("User profile not found");
+  if (profile.data.role === "client") throw new Error("Unauthorized: Staff access required");
+
   const fromStr = fromISO.slice(0, 10); // YYYY-MM-DD
   const toStr = toISO.slice(0, 10);     // YYYY-MM-DD
 

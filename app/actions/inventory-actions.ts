@@ -94,6 +94,13 @@ export async function deleteInventoryItemAction(itemId: string): Promise<ActionS
 }
 
 export async function getInventoryReport() {
+  const { auth } = await import("@/lib/firebase/firebase");
+  if (!auth.currentUser) throw new Error("Not authenticated");
+
+  const profile = await getUserProfile(auth.currentUser.uid);
+  if (!profile.success || !profile.data) throw new Error("User profile not found");
+  if (profile.data.role === "client") throw new Error("Unauthorized: Staff access required");
+
   const snap = await getDocs(collection(db, "inventory"));
 
   const rows = snap.docs.map((doc) => {
@@ -125,6 +132,12 @@ export async function getInventoryReport() {
         ? (reorderLevel as number)
         : undefined,
       unit: data.unit,
+      costPerUnit:
+        typeof data.costPerUnit === "number"
+          ? data.costPerUnit
+          : data.costPerUnit != null && data.costPerUnit !== ""
+          ? Number(data.costPerUnit)
+          : undefined,
       batchNumber: data.batchNumber,
       expirationDate: data.expirationDate,
       updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt,

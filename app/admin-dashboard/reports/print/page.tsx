@@ -12,6 +12,7 @@ import {
 import { getAppointmentsInRange } from "@/app/actions/appointment-actions";
 import { getInventoryReport } from "@/app/actions/inventory-actions";
 import { getUserDisplayNameByUid } from "@/lib/services/user-service";
+import { isNoShowAppointmentStatus, normalizeBillingStatus } from "@/lib/status-normalizers";
 
 type BillingRow = {
   id: string;
@@ -134,7 +135,7 @@ async function resolvePatientName(id?: string, fallback?: string) {
 }
 
 function statusChip(status: string) {
-  const s = String(status || "").toLowerCase();
+  const s = normalizeBillingStatus(status);
   if (s === "paid") return { label: "Paid", cls: "chip chip-paid" };
   if (s === "partial") return { label: "Partial", cls: "chip chip-partial" };
   if (s === "unpaid") return { label: "Unpaid", cls: "chip chip-unpaid" };
@@ -160,6 +161,7 @@ function ReportsPrintPageInner() {
   const [authReady, setAuthReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [printedAt, setPrintedAt] = useState<string>("");
+  const [preparedBy, setPreparedBy] = useState<string>("");
   const [billingRows, setBillingRows] = useState<BillingRow[]>([]);
   const [billingTxns, setBillingTxns] = useState<TxnRow[]>([]);
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
@@ -167,11 +169,35 @@ function ReportsPrintPageInner() {
   const [printed, setPrinted] = useState(false);
 
   useEffect(() => {
+    let active = true;
     const unsub = onAuthStateChanged(auth, (user) => {
       setAuthed(!!user);
+      if (!user) {
+        if (active) setPreparedBy("");
+        setAuthReady(true);
+        return;
+      }
+
+      const fallbackName =
+        user.displayName?.trim() ||
+        user.email?.trim() ||
+        (user.uid.length > 10 ? `${user.uid.slice(0, 6)}...` : user.uid);
+      if (active) setPreparedBy(fallbackName);
       setAuthReady(true);
+
+      void (async () => {
+        try {
+          const resolved = await getUserDisplayNameByUid(user.uid);
+          if (active && resolved?.trim()) setPreparedBy(resolved.trim());
+        } catch {
+          // keep fallback
+        }
+      })();
     });
-    return () => unsub();
+    return () => {
+      active = false;
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -291,8 +317,21 @@ function ReportsPrintPageInner() {
             if (!cancelled) setBillingTxns(all);
           }
         } else if (type === "appointments") {
-          const fromISO = from ? `${from}T00:00:00` : new Date().toISOString();
-          const toISO = to ? `${to}T23:59:59` : new Date().toISOString();
+          let fromISO: string;
+          let toISO: string;
+          if (from && to) {
+            fromISO = `${from}T00:00:00`;
+            toISO = `${to}T23:59:59`;
+          } else {
+            const safeRangeDays = Math.max(1, Number(range || 30) || 30);
+            const end = new Date();
+            end.setHours(23, 59, 59, 999);
+            const start = new Date(end);
+            start.setDate(end.getDate() - (safeRangeDays - 1));
+            start.setHours(0, 0, 0, 0);
+            fromISO = start.toISOString();
+            toISO = end.toISOString();
+          }
           const res = (await getAppointmentsInRange({ fromISO, toISO })) as { rows: AppointmentRow[] };
           if (!cancelled) setAppointments(res?.rows || []);
         } else if (type === "inventory") {
@@ -357,7 +396,7 @@ function ReportsPrintPageInner() {
   const apptTotals = useMemo(() => {
     const total = appointments.length;
     const cancelled = appointments.filter((a) => String(a.status || "").toLowerCase() === "cancelled").length;
-    const noShow = appointments.filter((a) => String(a.status || "").toLowerCase() === "no-show").length;
+    const noShow = appointments.filter((a) => isNoShowAppointmentStatus(a.status)).length;
     const procedures = appointments.reduce((sum, r) => {
       const status = String(r.status || "").toLowerCase();
       if (status !== "completed") return sum;
@@ -643,10 +682,9 @@ function ReportsPrintPageInner() {
             </div>
 
             {/* CENTER: Title */}
-            <div className="title-wrap">
-              <h1 className="report-title">{title}</h1>
-              <div className="report-subtitle">{subtitle}</div>
-            </div>
+                <div className="title-wrap">
+                  <h1 className="report-title">{title}</h1>
+                </div>
 
             {/* RIGHT: small meta block */}
             <div style={{ textAlign: "right" }}>
@@ -662,9 +700,6 @@ function ReportsPrintPageInner() {
 
           {/* Meta row */}
           <div className="header-meta">
-            <div className="meta-item">
-              <b>Prepared by:</b> ____________________
-            </div>
             <div className="meta-item">
               <b>Date range:</b> {subtitle}
             </div>
@@ -893,6 +928,9 @@ function ReportsPrintPageInner() {
         {/* Print footer */}
         <div className="footer">
           <div>J4 Dental Clinic • Admin Dashboard</div>
+          <div>
+            Prepared by: <b>{preparedBy || "Unknown user"}</b>
+          </div>
           <div className="pagecount" />
         </div>
 
