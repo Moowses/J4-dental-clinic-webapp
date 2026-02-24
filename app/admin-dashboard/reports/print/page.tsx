@@ -688,10 +688,6 @@ function ReportsPrintPageInner() {
 
             {/* RIGHT: small meta block */}
             <div style={{ textAlign: "right" }}>
-              <div className="muted" style={{ fontSize: 10.5 }}>
-                Printed
-              </div>
-              <div style={{ fontWeight: 800, fontSize: 11.5 }}>{printedAt || "—"}</div>
               <div className="muted" style={{ marginTop: 6, fontSize: 10.5 }}>
                 Internal report
               </div>
@@ -962,4 +958,3 @@ export default function ReportsPrintPage() {
     </Suspense>
   );
 }
-

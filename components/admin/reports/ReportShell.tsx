@@ -13,8 +13,6 @@ export default function ReportShell({
   children: ReactNode;
   empty?: { title: string; description?: string };
 }) {
-  const generatedAt = new Date().toLocaleString();
-
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       {/* Header */}
@@ -30,10 +28,7 @@ export default function ReportShell({
             ) : null}
           </div>
 
-          <div className="text-xs text-slate-500">
-            <div className="font-semibold text-slate-700">Generated</div>
-            <div>{generatedAt}</div>
-          </div>
+          <div />
         </div>
       </div>
 
