@@ -16,6 +16,13 @@ export default function SiteHeader() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authTab, setAuthTab] = useState<"login" | "signup">("login");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const runtimeSearch =
+    typeof window !== "undefined" ? window.location.search : "";
+  const runtimeParams = new URLSearchParams(runtimeSearch);
+  const authParam = (runtimeParams.get("auth") || "").trim();
+  const verifiedParam = (runtimeParams.get("verified") || "").trim();
+  const autoOpenLogin = authParam === "login";
+  const verifiedReturn = autoOpenLogin && verifiedParam === "1";
 
   // When modal closes, re-check auth state (covers successful login via modal)
   useEffect(() => {
@@ -215,9 +222,14 @@ export default function SiteHeader() {
       </header>
 
       <AuthModal
-        open={authOpen}
-        onClose={() => setAuthOpen(false)}
+        open={authOpen || autoOpenLogin}
+        onClose={() => {
+          setAuthOpen(false);
+          if (autoOpenLogin) router.replace("/");
+        }}
         defaultTab={authTab}
+        title={verifiedReturn ? "Email verified" : undefined}
+        subtitle={verifiedReturn ? "Your email is verified. Please log in to continue." : undefined}
       />
     </>
   );

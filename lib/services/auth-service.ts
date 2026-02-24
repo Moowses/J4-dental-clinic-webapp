@@ -5,6 +5,7 @@ import {
   sendPasswordResetEmail,
   updateProfile as firebaseUpdateProfile,
   sendEmailVerification,
+  ActionCodeSettings,
   GoogleAuthProvider,
   signInWithPopup,
   User,
@@ -19,7 +20,19 @@ import {
 import { z } from "zod";
 import { createUserDocument } from "./user-service";
 
-// ... existing code ...
+function getEmailVerificationActionCodeSettings(): ActionCodeSettings {
+  const appUrl =
+    (process.env.NEXT_PUBLIC_APP_URL || "").trim() ||
+    (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+
+  const continueUrl = new URL("/", appUrl);
+  continueUrl.searchParams.set("auth", "login");
+  continueUrl.searchParams.set("verified", "1");
+
+  return {
+    url: continueUrl.toString(),
+  };
+}
 
 export async function signIn(credentials: z.infer<typeof signInSchema>) {
   try {
@@ -54,7 +67,10 @@ export async function signUp(credentials: z.infer<typeof signUpSchema>) {
 
     // Send verification email immediately after signup
     if (userCredential.user) {
-      await sendEmailVerification(userCredential.user);
+      await sendEmailVerification(
+        userCredential.user,
+        getEmailVerificationActionCodeSettings()
+      );
     }
     
     return { success: true };
@@ -109,7 +125,7 @@ export async function updateUserProfile(user: User, data: z.infer<typeof updateP
 
 export async function sendVerificationEmail(user: User) {
   try {
-    await sendEmailVerification(user);
+    await sendEmailVerification(user, getEmailVerificationActionCodeSettings());
     return { success: true };
   } catch (error) {
     if (error instanceof Error) {

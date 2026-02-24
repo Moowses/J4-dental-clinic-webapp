@@ -229,6 +229,13 @@ export default function HomePage() {
 
   const bookBtnBase =
     "inline-flex w-fit items-center justify-center rounded-full px-6 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-95 disabled:opacity-60";
+  const runtimeSearch =
+    typeof window !== "undefined" ? window.location.search : "";
+  const runtimeParams = new URLSearchParams(runtimeSearch);
+  const authParam = (runtimeParams.get("auth") || "").trim();
+  const verifiedParam = (runtimeParams.get("verified") || "").trim();
+  const autoOpenLogin = authParam === "login";
+  const verifiedReturn = autoOpenLogin && verifiedParam === "1";
 
   const servicesContent = useMemo(() => {
     if (svcLoading) {
@@ -552,11 +559,18 @@ export default function HomePage() {
       </main>
 
       <AuthModal
-        open={showAuth}
-        onClose={() => setShowAuth(false)}
+        open={showAuth || autoOpenLogin}
+        onClose={() => {
+          setShowAuth(false);
+          if (autoOpenLogin) router.replace("/");
+        }}
         redirectTo="/client-dashboard"
-        title="Continue booking your appointment"
-        subtitle="Please log in or create an account to proceed."
+        title={verifiedReturn ? "Email verified" : "Continue booking your appointment"}
+        subtitle={
+          verifiedReturn
+            ? "Your email is verified. Please log in to continue."
+            : "Please log in or create an account to proceed."
+        }
       />
     </>
   );
