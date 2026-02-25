@@ -56,6 +56,138 @@ A: Yes, walk-ins are accepted, but booking in advance is recommended.
 Q: pwede walk in
 A: Yes, walk-ins are accepted, but booking in advance is recommended.
 
+Q: Who are your dentists?
+A: Our associate dentists are Dr. Klariz Ira Solmayor and Dr. Ian Al-Mohbin Kimble.
+
+Q: Dentists
+A: Our associate dentists are Dr. Klariz Ira Solmayor and Dr. Ian Al-Mohbin Kimble.
+
+Q: Associate dentists
+A: Our associate dentists are Dr. Klariz Ira Solmayor and Dr. Ian Al-Mohbin Kimble.
+
+Q: Dentist list
+A: Our associate dentists are Dr. Klariz Ira Solmayor and Dr. Ian Al-Mohbin Kimble.
+
+Q: Who are your doctors?
+A: Our associate dentists are Dr. Klariz Ira Solmayor and Dr. Ian Al-Mohbin Kimble.
+
+Q: Who are your dental doctors?
+A: Our associate dentists are Dr. Klariz Ira Solmayor and Dr. Ian Al-Mohbin Kimble.
+
+Q: Sino ang mga dentista ninyo?
+A: Ang among mga associate dentist kay si Dr. Klariz Ira Solmayor ug si Dr. Ian Al-Mohbin Kimble.
+
+Q: Sino ang dentists ninyo?
+A: Ang among mga associate dentist kay si Dr. Klariz Ira Solmayor ug si Dr. Ian Al-Mohbin Kimble.
+
+Q: Listahan ng dentista
+A: Ang aming mga associate dentist ay sina Dr. Klariz Ira Solmayor at Dr. Ian Al-Mohbin Kimble.
+
+Q: Kinsa inyong mga dentista?
+A: Ang among mga associate dentist kay si Dr. Klariz Ira Solmayor ug si Dr. Ian Al-Mohbin Kimble.
+
+Q: Kinsa inyong mga dentist?
+A: Ang among mga associate dentist kay si Dr. Klariz Ira Solmayor ug si Dr. Ian Al-Mohbin Kimble.
+
+Q: Listahan sa dentista
+A: Ang among mga associate dentist kay si Dr. Klariz Ira Solmayor ug si Dr. Ian Al-Mohbin Kimble.
+
+Q: Who is the clinic owner?
+A: The clinic owner is Dr. Joshua Juezan.
+
+Q: Clinic owner
+A: The clinic owner is Dr. Joshua Juezan.
+
+Q: Owner
+A: The clinic owner is Dr. Joshua Juezan.
+
+Q: Who owns the clinic?
+A: The clinic owner is Dr. Joshua Juezan.
+
+Q: Sino ang may-ari ng klinika?
+A: Ang may-ari ng klinika ay si Dr. Joshua Juezan.
+
+Q: May-ari ng klinika
+A: Ang may-ari ng klinika ay si Dr. Joshua Juezan.
+
+Q: Kinsa ang tag-iya sa klinika?
+A: Ang tag-iya sa klinika kay si Dr. Joshua Juezan.
+
+Q: Tag-iya sa klinika
+A: Ang tag-iya sa klinika kay si Dr. Joshua Juezan.
+
+Q: Who is the clinic manager?
+A: Our clinic manager is Jezziah Juezan.
+
+Q: Clinic manager
+A: Our clinic manager is Jezziah Juezan.
+
+Q: Manager
+A: Our clinic manager is Jezziah Juezan.
+
+Q: Who manages the clinic?
+A: Our clinic manager is Jezziah Juezan.
+
+Q: Sino ang clinic manager?
+A: Ang aming clinic manager ay si Jezziah Juezan.
+
+Q: Manager ng klinika
+A: Ang aming clinic manager ay si Jezziah Juezan.
+
+Q: Kinsa ang clinic manager?
+A: Ang among clinic manager kay si Jezziah Juezan.
+
+Q: Manager sa klinika
+A: Ang among clinic manager kay si Jezziah Juezan.
+
+Q: Who is your dental assistant?
+A: Our dental assistant is Liezel Narca.
+
+Q: Dental assistant
+A: Our dental assistant is Liezel Narca.
+
+Q: Assistant
+A: Our dental assistant is Liezel Narca.
+
+Q: Who is the assistant?
+A: Our dental assistant is Liezel Narca.
+
+Q: Sino ang dental assistant?
+A: Ang aming dental assistant ay si Liezel Narca.
+
+Q: Dental assistant ninyo
+A: Ang among dental assistant kay si Liezel Narca.
+
+Q: Kinsa ang dental assistant?
+A: Ang among dental assistant kay si Liezel Narca.
+
+Q: Who handles the front desk?
+A: Our front desk staff is Janice Trasmonte.
+
+Q: Front desk
+A: Our front desk staff is Janice Trasmonte.
+
+Q: Receptionist
+A: Our front desk staff is Janice Trasmonte.
+
+Q: Front desk staff
+A: Our front desk staff is Janice Trasmonte.
+
+Q: Sino ang nasa front desk?
+A: Ang aming front desk staff ay si Janice Trasmonte.
+
+Q: Sino ang receptionist?
+A: Ang aming front desk staff ay si Janice Trasmonte.
+
+Q: Front desk staff ninyo
+A: Ang among front desk staff kay si Janice Trasmonte.
+
+Q: Kinsa ang naa sa front desk?
+A: Ang among front desk staff kay si Janice Trasmonte.
+
+Q: Kinsa ang receptionist?
+A: Ang among front desk staff kay si Janice Trasmonte.
+
 Q: Do you offer installment?
 A: Yes, installment payments are available for selected dental procedures.
 
