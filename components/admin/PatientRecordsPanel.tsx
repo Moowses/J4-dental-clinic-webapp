@@ -232,45 +232,203 @@ function PatientDetailsModal({
         } ${reg.personal_information.name.last_name || ""}`.replace(/\s+/g, " ").trim()
       : profile?.displayName || profile?.email || "Patient";
   const contact = reg?.contact_information || {};
+  const p = reg?.personal_information || {};
+  const m = reg?.medical_history || {};
+  const women = m?.women_only || {};
+  const allergies = m?.allergies || {};
+  const allergyList = [
+    allergies.local_anesthetic ? "Local Anesthetic" : null,
+    allergies.penicillin_antibiotics ? "Penicillin" : null,
+    allergies.sulfa_drugs ? "Sulfa Drugs" : null,
+    allergies.aspirin ? "Aspirin" : null,
+    allergies.latex ? "Latex" : null,
+  ].filter(Boolean);
+  const conditions = Array.isArray(m?.conditions_checklist) ? m.conditions_checklist : [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-2xl rounded-2xl bg-white border border-slate-200 shadow-xl overflow-hidden">
+      <div className="w-full max-w-5xl rounded-2xl bg-white border border-slate-200 shadow-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100">
           <h3 className="text-lg font-extrabold text-slate-900">Patient Details</h3>
           <p className="text-sm text-slate-500">{name}</p>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 overflow-y-auto space-y-4 max-h-[80vh]">
           {loading ? (
             <p className="text-sm text-slate-500">Loading...</p>
           ) : (
             <>
               <div className={sectionCard}>
                 <p className={labelSm}>Personal Information</p>
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-700">
-                  <div>Name: {name}</div>
-                  <div>Birthdate: {reg?.personal_information?.birthdate || "—"}</div>
-                  <div>Sex: {reg?.personal_information?.sex || "—"}</div>
-                  <div>Nationality: {reg?.personal_information?.nationality || "—"}</div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className={labelSm}>First Name</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {p?.name?.first_name || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Last Name</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {p?.name?.last_name || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Middle Initial</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {p?.name?.middle_initial || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Birthdate</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {p?.birthdate || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Age</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {p?.age ?? "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Sex</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {p?.sex || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Nationality</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {p?.nationality || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Religion</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {p?.religion || "—"}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <div className={sectionCard}>
                 <p className={labelSm}>Contact Details</p>
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-700">
-                  <div>Mobile: {contact?.mobile_no || "—"}</div>
-                  <div>Email: {contact?.email_address || profile?.email || "—"}</div>
-                  <div>Address: {contact?.home_address || "—"}</div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-2">
+                    <label className={labelSm}>Home Address</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {contact?.home_address || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Mobile No</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {contact?.mobile_no || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Email</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {contact?.email_address || profile?.email || "—"}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <div className={sectionCard}>
-                <p className={labelSm}>Medical</p>
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-700">
-                  <div>Blood Type: {reg?.medical_history?.vitals?.blood_type || "—"}</div>
-                  <div>Blood Pressure: {reg?.medical_history?.vitals?.blood_pressure || "—"}</div>
-                  <div>Allergies: {reg?.medical_history?.allergies?.others || "—"}</div>
+                <p className={labelSm}>Other Details</p>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className={labelSm}>Occupation</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {reg?.employment_information?.occupation || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Previous Dentist</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {reg?.dental_history?.previous_dentist || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Last Dental Visit</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {reg?.dental_history?.last_dental_visit || "—"}
+                    </div>
+                  </div>
+                </div>
+                {String(p?.sex || "").toLowerCase() === "female" && (
+                  <div className="mt-4">
+                    <p className={labelSm}>Women Only</p>
+                    <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-slate-700">
+                      <div>Pregnant: {yesNoNull(women?.is_pregnant ?? null) || "—"}</div>
+                      <div>Nursing: {yesNoNull(women?.is_nursing ?? null) || "—"}</div>
+                      <div>Birth Control: {yesNoNull(women?.taking_birth_control ?? null) || "—"}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className={sectionCard}>
+                <p className={labelSm}>Vitals & Allergies</p>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className={labelSm}>Blood Type</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {m?.vitals?.blood_type || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Blood Pressure</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {m?.vitals?.blood_pressure || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Bleeding Time</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {m?.vitals?.bleeding_time || "—"}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelSm}>Allergies (select)</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {allergyList.length ? allergyList.join(", ") : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Other Allergies</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {allergies?.others || "—"}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className={labelSm}>Conditions Checklist</label>
+                  <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {conditions.length ? conditions.join(", ") : "—"}
+                  </div>
+                </div>
+              </div>
+
+              <div className={sectionCard}>
+                <p className={labelSm}>Authorization</p>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className={labelSm}>Signature Present</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {yesNoNull(reg?.authorization?.signature_present ?? null) || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelSm}>Date Signed</label>
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {reg?.authorization?.date_signed || "—"}
+                    </div>
+                  </div>
                 </div>
               </div>
             </>
@@ -1053,7 +1211,7 @@ export default function PatientRecordsPanel() {
                             <div className="flex justify-end gap-2">
                               <button
                                 onClick={() => setViewingUid(u.uid)}
-                                className="px-3 py-2 rounded-xl bg-slate-100 font-extrabold text-xs hover:bg-slate-200"
+                                className="px-3 py-2 rounded-xl bg-slate-700 text-white font-extrabold text-xs hover:bg-slate-800"
                               >
                                 View
                               </button>
@@ -1118,7 +1276,5 @@ export default function PatientRecordsPanel() {
     </Card>
   );
 }
-
-
 
 
