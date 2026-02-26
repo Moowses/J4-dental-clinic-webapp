@@ -65,10 +65,13 @@ export const AppointmentConfirmationEmail = ({
                 <Text style={detailRow}><strong>Previous Time:</strong> {previousTime}</Text>
               </>
             ) : null}
-            <Text style={detailRow}><strong>Date:</strong> {date}</Text>
-            <Text style={detailRow}><strong>Time:</strong> {time}</Text>
-            <Text style={detailRow}><strong>Reference ID:</strong> {appointmentId}</Text>
-          </Section>
+	            <Text style={detailRow}><strong>Date:</strong> {date}</Text>
+	            <Text style={detailRow}><strong>Time:</strong> {time}</Text>
+	            <Text style={{ ...detailRow, color: "#b45309", fontSize: "13px", marginTop: "4px" }}>
+	              Note: You can’t cancel or reschedule within 3 hours of your scheduled time.
+	            </Text>
+	            <Text style={detailRow}><strong>Reference ID:</strong> {appointmentId}</Text>
+	          </Section>
 
           <Text style={text}>
             Your appointment has been approved by the clinic team. No further confirmation is required from your side.
@@ -83,11 +86,7 @@ export const AppointmentConfirmationEmail = ({
           <Text style={text}>
             We have attached a calendar invite to this email. Please add it to your calendar!
           </Text>
-          <Text style={text}>
-            Policy: Cancellations are not allowed within 3 hours before your appointment time.
-          </Text>
-
-          <Hr style={hr} />
+	          <Hr style={hr} />
           
           <Text style={footer}>
             {clinicName} - 123 Dental Street, City<br />

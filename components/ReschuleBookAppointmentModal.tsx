@@ -20,6 +20,7 @@ type AppointmentLike = {
 type Props = {
   open: boolean;
   appointment: AppointmentLike | null;
+  enforceThreeHourRule?: boolean;
   onClose: () => void;
   onRescheduled?: () => void;
 };
@@ -94,6 +95,7 @@ const inputBase =
 export default function ReschuleBookAppointmentModal({
   open,
   appointment,
+  enforceThreeHourRule = false,
   onClose,
   onRescheduled,
 }: Props) {
@@ -117,7 +119,27 @@ export default function ReschuleBookAppointmentModal({
   const allSlots = useMemo(() => generateTimeSlots("08:00", "17:00", 60), []);
 
   const status = String(appointment?.status || "pending").toLowerCase();
-  const rescheduleBlocked = status === "cancelled" || status === "completed";
+  const statusBlocked = status === "cancelled" || status === "completed";
+  const leadTimeBlockedReason = useMemo(() => {
+    if (!enforceThreeHourRule || !appointment?.date || !appointment?.time) return null;
+
+    const [y, m, d] = String(appointment.date).split("-").map((v) => parseInt(v, 10));
+    const [hh, mm] = String(appointment.time).split(":").map((v) => parseInt(v, 10));
+    if (!y || !m || !d || Number.isNaN(hh) || Number.isNaN(mm)) return null;
+
+    const apptDate = new Date(y, m - 1, d, hh, mm, 0, 0);
+    const diffMs = apptDate.getTime() - Date.now();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffMs < 0) {
+      return "This appointment has already started/passed. Please call front desk.";
+    }
+    if (diffHours <= 3) {
+      return "You can't reschedule your appointment 3 hours before your appointment. Please call front desk about this.";
+    }
+    return null;
+  }, [appointment?.date, appointment?.time, enforceThreeHourRule]);
+  const rescheduleBlocked = statusBlocked || Boolean(leadTimeBlockedReason);
 
   const todayYMD = useMemo(() => getTodayYMD(), []);
 
@@ -395,7 +417,13 @@ export default function ReschuleBookAppointmentModal({
             </div>
           </div>
 
-          {rescheduleBlocked ? (
+          {!statusBlocked && leadTimeBlockedReason ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              {leadTimeBlockedReason}
+            </div>
+          ) : null}
+
+          {statusBlocked ? (
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               This appointment can’t be rescheduled because it is{" "}
               <span className="font-extrabold">{status.toUpperCase()}</span>.

@@ -72,6 +72,7 @@ function AppointmentsTable({
   onReschedule,
   onCancel,
   getCancelDisabledReason,
+  getRescheduleDisabledReason,
 }: {
   appointments: Appointment[];
   loading: boolean;
@@ -80,6 +81,7 @@ function AppointmentsTable({
   onReschedule: (appt: Appointment) => void;
   onCancel: (appt: Appointment) => void;
   getCancelDisabledReason: (appt: Appointment) => string | null;
+  getRescheduleDisabledReason: (appt: Appointment) => string | null;
 }) {
   if (loading) {
     return (
@@ -168,6 +170,7 @@ function AppointmentsTable({
                   onReschedule={() => onReschedule(appt)}
                   onCancel={() => onCancel(appt)}
                   cancelDisabledReason={getCancelDisabledReason(appt)}
+                  rescheduleDisabledReason={getRescheduleDisabledReason(appt)}
                 />
               </div>
             </div>
@@ -212,7 +215,7 @@ function AppointmentsTable({
                     onReschedule={() => onReschedule(appt)}
                     onCancel={() => onCancel(appt)}
                     cancelDisabledReason={getCancelDisabledReason(appt)}
-                   
+                    rescheduleDisabledReason={getRescheduleDisabledReason(appt)}
                   />
                 </td>
               </tr>
@@ -1301,6 +1304,28 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     return null;
   }
 
+  function getRescheduleDisabledReason(appt: Appointment): string | null {
+    const status = String((appt as any).status || "").toLowerCase();
+    if (status !== "pending") return "Only pending appointments can be rescheduled.";
+
+    const dt = getAppointmentDateTimeLocal(appt);
+    if (!dt) return null;
+
+    const now = new Date();
+    const diffMs = dt.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffMs < 0) {
+      return "This appointment has already started/passed. Please call front desk.";
+    }
+
+    if (diffHours <= 3) {
+      return "You can't reschedule your appointment 3 hours before your appointment. Please call front desk about this.";
+    }
+
+    return null;
+  }
+
   async function handleCancelAppointment(appt: Appointment) {
     const reason = getCancelDisabledReason(appt);
     if (reason) {
@@ -1324,6 +1349,11 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
   }
 
   function handleOpenReschedule(appt: Appointment) {
+    const reason = getRescheduleDisabledReason(appt);
+    if (reason) {
+      alert(reason);
+      return;
+    }
     setSelectedAppt(appt);
     setOpenReschedule(true);
   }
@@ -1515,6 +1545,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                 onReschedule={handleOpenReschedule}
                 onCancel={handleCancelAppointment}
                 getCancelDisabledReason={getCancelDisabledReason}
+                getRescheduleDisabledReason={getRescheduleDisabledReason}
               />
             ) : active === "transactions" ? (
               <div className="space-y-4">
@@ -1605,6 +1636,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
       <ReschuleBookAppointmentModal
         open={openReschedule}
         appointment={selectedAppt}
+        enforceThreeHourRule
         onClose={() => setOpenReschedule(false)}
         onRescheduled={async () => {
           setOpenReschedule(false);

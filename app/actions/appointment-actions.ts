@@ -450,6 +450,36 @@ export async function rescheduleAppointmentAction(
     const patientId = (currentAppt.data as any).patientId;
     const dentistId = (currentAppt.data as any).dentistId;
     const serviceName = String((currentAppt.data as any).serviceType || "Dental Service");
+    const currentStatus = String((currentAppt.data as any).status || "").toLowerCase();
+
+    if (currentStatus !== "pending") {
+      return { success: false, error: "Only pending appointments can be rescheduled." };
+    }
+
+    if (oldDate && oldTime) {
+      const [y, m, d] = String(oldDate).split("-").map((v) => parseInt(v, 10));
+      const [hh, mm] = String(oldTime).split(":").map((v) => parseInt(v, 10));
+      if (y && m && d && !Number.isNaN(hh) && !Number.isNaN(mm)) {
+        const apptDate = new Date(y, m - 1, d, hh, mm, 0, 0);
+        const diffMs = apptDate.getTime() - Date.now();
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        if (diffMs < 0) {
+          return {
+            success: false,
+            error: "This appointment has already started/passed. Please call front desk.",
+          };
+        }
+
+        if (diffHours <= 3) {
+          return {
+            success: false,
+            error:
+              "You can't reschedule your appointment 3 hours before your appointment. Please call front desk about this.",
+          };
+        }
+      }
+    }
 
     const res = await rescheduleAppointment(appointmentId, newDate, newTime);
     if (!res.success) return { success: false, error: res.error || "Failed to reschedule" };

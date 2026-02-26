@@ -10,6 +10,7 @@ export default function AppointmentRowActions({
   onReschedule,
   onCancel,
   cancelDisabledReason,
+  rescheduleDisabledReason,
 }: {
   appointment: Appointment;
   onView: () => void;
@@ -17,6 +18,7 @@ export default function AppointmentRowActions({
   onReschedule: () => void;
   onCancel: () => void;
   cancelDisabledReason?: string | null;
+  rescheduleDisabledReason?: string | null;
 }) {
   const status = String(appointment.status || "").toLowerCase();
   const canCancel = status === "pending";
@@ -50,8 +52,15 @@ export default function AppointmentRowActions({
         <>
           {canReschedule && (
             <button
-              className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+              className={[
+                "rounded-lg px-3 py-2 text-xs font-bold",
+                rescheduleDisabledReason
+                  ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                  : "bg-blue-50 text-blue-700 hover:bg-blue-100",
+              ].join(" ")}
               onClick={onReschedule}
+              disabled={Boolean(rescheduleDisabledReason)}
+              title={rescheduleDisabledReason || ""}
             >
               Reschedule
             </button>
