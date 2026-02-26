@@ -1,6 +1,6 @@
 "use server";
 
-import { sendAppointmentEmail, sendNoShowEmail } from "@/lib/services/email-service";
+import { sendAppointmentEmail, sendCancellationEmail, sendNoShowEmail } from "@/lib/services/email-service";
 
 export async function sendAppointmentConfirmationEmailAction(input: {
   appointmentId: string;
@@ -131,5 +131,31 @@ export async function sendNoShowEmailAction(input: {
     patientEmail,
   });
   console.log("[no-show-email] done", res?.success ? "ok" : res?.error);
+  return res;
+}
+
+export async function sendCancellationEmailAction(input: {
+  appointmentId: string;
+  date: string;
+  time: string;
+  serviceName: string;
+  patientName: string;
+  patientEmail: string;
+}) {
+  const { appointmentId, date, time, serviceName, patientName, patientEmail } = input;
+  if (!appointmentId || !date || !time || !patientEmail) {
+    return { success: false, error: "Missing required fields" };
+  }
+
+  console.log("[cancel-email] start", { appointmentId, patientEmail });
+  const res = await sendCancellationEmail({
+    id: appointmentId,
+    date,
+    time,
+    serviceName,
+    patientName,
+    patientEmail,
+  });
+  console.log("[cancel-email] done", res?.success ? "ok" : res?.error);
   return res;
 }

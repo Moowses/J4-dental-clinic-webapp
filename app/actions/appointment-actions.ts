@@ -31,6 +31,7 @@ import {
 } from "@/lib/types/appointment";
 import {
   sendAppointmentConfirmationEmailAction,
+  sendCancellationEmailAction,
   sendRescheduleEmailsAction,
   sendNoShowEmailAction,
 } from "@/app/actions/appointment-email-actions";
@@ -231,6 +232,31 @@ export async function cancelAppointmentAction(
 
   const result = await updateAppointmentStatus(appointmentId, "cancelled");
   if (!result?.success) return { success: false, error: result?.error || "Failed to cancel appointment." };
+
+  try {
+    const profileRes = await getUserProfile(appointment.patientId);
+    const patientEmail =
+      profileRes?.success && profileRes.data?.email
+        ? profileRes.data.email
+        : String((appointment as any).patientEmail || "");
+
+    if (patientEmail) {
+      await sendCancellationEmailAction({
+        appointmentId: appointment.id,
+        date: String(appointment.date || ""),
+        time: String(appointment.time || ""),
+        serviceName: String(appointment.serviceType || "Dental Service"),
+        patientName:
+          (profileRes?.success && profileRes.data?.displayName) ||
+          profileRes?.data?.email ||
+          "Patient",
+        patientEmail,
+      });
+    }
+  } catch (e) {
+    console.error("Failed to send cancellation email:", e);
+  }
+
   return { success: true };
 }
 

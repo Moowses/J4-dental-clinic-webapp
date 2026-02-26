@@ -2,6 +2,7 @@
 
 import { Resend } from 'resend';
 import { AppointmentConfirmationEmail } from '@/lib/email/templates/AppointmentConfirmation';
+import { AppointmentCancellationEmail } from '@/lib/email/templates/AppointmentCancellation';
 import { NoShowNotificationEmail } from '@/lib/email/templates/NoShowNotification';
 import { render } from '@react-email/render';
 import { createEvent, EventAttributes } from 'ics';
@@ -23,6 +24,15 @@ interface EmailAppointmentDetails {
 }
 
 interface NoShowEmailDetails {
+  id: string;
+  date: string;
+  time: string;
+  serviceName: string;
+  patientName: string;
+  patientEmail: string;
+}
+
+interface CancellationEmailDetails {
   id: string;
   date: string;
   time: string;
@@ -157,6 +167,49 @@ export async function sendNoShowEmail(details: NoShowEmailDetails, apiKey?: stri
     return { success: true, id: response.data?.id };
   } catch (error) {
     console.error("Failed to send no show email:", error);
+    return { success: false, error };
+  }
+}
+
+export async function sendCancellationEmail(details: CancellationEmailDetails, apiKey?: string) {
+  const finalApiKey = apiKey || process.env.RESEND_API_KEY;
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  if (!finalApiKey) {
+    console.warn("RESEND_API_KEY is missing. Email sending skipped.");
+    return { success: false, error: "API Key missing" };
+  }
+
+  const resend = new Resend(finalApiKey);
+  const loginUrl = `${APP_URL}/?auth=login`;
+
+  try {
+    const emailHtml = await render(
+      AppointmentCancellationEmail({
+        patientName: details.patientName,
+        date: details.date,
+        time: details.time,
+        serviceName: details.serviceName,
+        appointmentId: details.id,
+        loginUrl,
+      })
+    );
+
+    const response = await resend.emails.send({
+      from: "Dental Clinic <no-reply@j4dentalclinic.karlmosses.com>",
+      to: [details.patientEmail],
+      subject: `Appointment Cancelled - ${details.date}`,
+      html: emailHtml,
+    });
+
+    if (response.error) {
+      console.error("Resend Error:", response.error);
+      return { success: false, error: response.error };
+    }
+
+    return { success: true, id: response.data?.id };
+  } catch (error) {
+    console.error("Failed to send cancellation email:", error);
     return { success: false, error };
   }
 }
