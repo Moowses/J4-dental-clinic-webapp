@@ -1284,7 +1284,9 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
 
   function getCancelDisabledReason(appt: Appointment): string | null {
     const status = String((appt as any).status || "").toLowerCase();
-    if (status !== "pending") return "Only pending appointments can be cancelled.";
+    if (status !== "pending" && status !== "confirmed") {
+      return "Only pending or confirmed appointments can be cancelled.";
+    }
 
     const dt = getAppointmentDateTimeLocal(appt);
     if (!dt) return null;
@@ -1306,7 +1308,9 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
 
   function getRescheduleDisabledReason(appt: Appointment): string | null {
     const status = String((appt as any).status || "").toLowerCase();
-    if (status !== "pending") return "Only pending appointments can be rescheduled.";
+    if (status !== "pending" && status !== "confirmed") {
+      return "Only pending or confirmed appointments can be rescheduled.";
+    }
 
     const dt = getAppointmentDateTimeLocal(appt);
     if (!dt) return null;

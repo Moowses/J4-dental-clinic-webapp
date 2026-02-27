@@ -21,8 +21,8 @@ export default function AppointmentRowActions({
   rescheduleDisabledReason?: string | null;
 }) {
   const status = String(appointment.status || "").toLowerCase();
-  const canCancel = status === "pending";
-  const canReschedule = status === "pending";
+  const canCancel = status === "pending" || status === "confirmed";
+  const canReschedule = status === "pending" || status === "confirmed";
   const canTransactions = status === "completed" && !!appointment.treatment;
 
   return (

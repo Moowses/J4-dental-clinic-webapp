@@ -201,8 +201,8 @@ export async function cancelAppointmentAction(
 
   const appointment = apptRes.data as Appointment;
   const status = String(appointment.status || "").toLowerCase();
-  if (status !== "pending") {
-    return { success: false, error: "Only pending appointments can be cancelled." };
+  if (status !== "pending" && status !== "confirmed") {
+    return { success: false, error: "Only pending or confirmed appointments can be cancelled." };
   }
 
   const dateStr = String(appointment.date || "").trim();
@@ -478,8 +478,8 @@ export async function rescheduleAppointmentAction(
     const serviceName = String((currentAppt.data as any).serviceType || "Dental Service");
     const currentStatus = String((currentAppt.data as any).status || "").toLowerCase();
 
-    if (currentStatus !== "pending") {
-      return { success: false, error: "Only pending appointments can be rescheduled." };
+    if (currentStatus !== "pending" && currentStatus !== "confirmed") {
+      return { success: false, error: "Only pending or confirmed appointments can be rescheduled." };
     }
 
     if (oldDate && oldTime) {
