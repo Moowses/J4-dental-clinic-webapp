@@ -248,6 +248,7 @@ function CancelAppointmentModal({
   error?: string | null;
 }) {
   if (!open || !appointment) return null;
+  const proceedPrompt = "are you want proceed?";
 
   const status = String((appointment as any).status || "").toLowerCase();
   const reasonRequired = status === "confirmed";
@@ -303,7 +304,10 @@ function CancelAppointmentModal({
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              if (typeof window !== "undefined" && !window.confirm(proceedPrompt)) return;
+              onClose();
+            }}
             disabled={submitting}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
           >
@@ -311,7 +315,10 @@ function CancelAppointmentModal({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => {
+              if (typeof window !== "undefined" && !window.confirm(proceedPrompt)) return;
+              onConfirm();
+            }}
             disabled={submitting}
             className="rounded-xl border border-red-700 bg-red-700 px-4 py-2 text-sm font-extrabold text-white hover:bg-red-800 disabled:opacity-60"
           >
@@ -1452,7 +1459,6 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     if (!cancelTarget) return;
     const id = String((cancelTarget as any).id || "");
     if (!id) return;
-    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
     const status = String((cancelTarget as any).status || "").toLowerCase();
     const normalized = cancelReasonInput.trim();
 
