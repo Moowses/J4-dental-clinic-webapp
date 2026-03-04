@@ -227,6 +227,101 @@ function AppointmentsTable({
   );
 }
 
+function CancelAppointmentModal({
+  open,
+  appointment,
+  reason,
+  onReasonChange,
+  onClose,
+  onConfirm,
+  submitting,
+  error,
+}: {
+  open: boolean;
+  appointment: Appointment | null;
+  reason: string;
+  onReasonChange: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  submitting: boolean;
+  error?: string | null;
+}) {
+  if (!open || !appointment) return null;
+
+  const status = String((appointment as any).status || "").toLowerCase();
+  const reasonRequired = status === "confirmed";
+  const serviceType = String((appointment as any).serviceType || "Appointment");
+  const date = String((appointment as any).date || "");
+  const time = formatTime12h(String((appointment as any).time || ""));
+
+  return (
+    <div className="fixed inset-0 z-[70]">
+      <button className="absolute inset-0 bg-black/45" aria-label="Close cancel modal" onClick={onClose} />
+      <div className="absolute left-1/2 top-1/2 w-[94vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-extrabold text-slate-900">Cancel Appointment</h3>
+            <p className="mt-1 text-sm text-slate-600">Please confirm before continuing.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+          <p className="font-bold text-slate-900">{serviceType}</p>
+          <p className="mt-1">
+            {date} at {time}
+          </p>
+          <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">Status: {status || "pending"}</p>
+        </div>
+
+        <div className="mt-4">
+          <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
+            Reason {reasonRequired ? "(Required)" : "(Optional)"}
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => onReasonChange(e.target.value)}
+            rows={4}
+            placeholder="Type your reason here..."
+            className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-300"
+          />
+          {reasonRequired ? (
+            <p className="mt-2 text-xs text-amber-700">Confirmed appointments require a cancellation reason.</p>
+          ) : null}
+        </div>
+
+        {error ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
+
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          >
+            Keep Appointment
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={submitting}
+            className="rounded-xl border border-red-700 bg-red-700 px-4 py-2 text-sm font-extrabold text-white hover:bg-red-800 disabled:opacity-60"
+          >
+            {submitting ? "Cancelling..." : "Proceed Cancel"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function toDate(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -1104,6 +1199,11 @@ export default function ClientDashboardPage() {
   const [openBooking, setOpenBooking] = useState(false);
   const [openReschedule, setOpenReschedule] = useState(false);
   const [openTreatmentRecord, setOpenTreatmentRecord] = useState(false);
+  const [openCancelModal, setOpenCancelModal] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
+  const [cancelReasonInput, setCancelReasonInput] = useState("");
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [cancelModalError, setCancelModalError] = useState<string | null>(null);
 
   const normalizedRole = (role ?? "").toString().trim().toLowerCase();
   const patientName = useMemo(() => user?.displayName || user?.email?.split("@")[0] || "Patient", [user]);
@@ -1330,25 +1430,50 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     return null;
   }
 
-  async function handleCancelAppointment(appt: Appointment) {
+  function handleCancelAppointment(appt: Appointment) {
     const reason = getCancelDisabledReason(appt);
     if (reason) {
       alert(reason);
       return;
     }
+    setCancelTarget(appt);
+    setCancelReasonInput("");
+    setCancelModalError(null);
+    setOpenCancelModal(true);
+  }
 
-    const id = String((appt as any).id || "");
+  async function handleConfirmCancelAppointment() {
+    if (!cancelTarget) return;
+    const id = String((cancelTarget as any).id || "");
     if (!id) return;
+    const status = String((cancelTarget as any).status || "").toLowerCase();
+    const normalized = cancelReasonInput.trim();
 
-    try {
-      const res = await cancelAppointmentAction(id);
-      if (!res?.success) {
-        alert(res?.error || "Failed to cancel appointment.");
+    let cancelReason: string | undefined = normalized || undefined;
+    if (status === "confirmed") {
+      if (!normalized) {
+        setCancelModalError("Cancellation reason is required for confirmed appointments.");
         return;
       }
+      cancelReason = normalized;
+    }
+
+    try {
+      setCancelSubmitting(true);
+      setCancelModalError(null);
+      const res = await cancelAppointmentAction(id, cancelReason);
+      if (!res?.success) {
+        setCancelModalError(res?.error || "Failed to cancel appointment.");
+        return;
+      }
+      setOpenCancelModal(false);
+      setCancelTarget(null);
+      setCancelReasonInput("");
       await refreshAppointments();
     } catch (e: any) {
-      alert(e?.message || "Failed to cancel appointment.");
+      setCancelModalError(e?.message || "Failed to cancel appointment.");
+    } finally {
+      setCancelSubmitting(false);
     }
   }
 
@@ -1646,6 +1771,22 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
           setOpenReschedule(false);
           await refreshAppointments();
         }}
+      />
+      <CancelAppointmentModal
+        open={openCancelModal}
+        appointment={cancelTarget}
+        reason={cancelReasonInput}
+        onReasonChange={setCancelReasonInput}
+        onClose={() => {
+          if (cancelSubmitting) return;
+          setOpenCancelModal(false);
+          setCancelTarget(null);
+          setCancelReasonInput("");
+          setCancelModalError(null);
+        }}
+        onConfirm={handleConfirmCancelAppointment}
+        submitting={cancelSubmitting}
+        error={cancelModalError}
       />
       {openTreatmentRecord && user?.uid && (
         <ClientTreatmentHistoryModal

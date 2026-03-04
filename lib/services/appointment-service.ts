@@ -296,7 +296,8 @@ export async function saveTreatmentRecord(appointmentId: string, data: Omit<Trea
 export async function rescheduleAppointment(
   appointmentId: string,
   newDate: string,
-  newTime: string
+  newTime: string,
+  meta?: { reason?: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!appointmentId || !newDate || !newTime) {
@@ -355,12 +356,16 @@ export async function rescheduleAppointment(
 
     // ✅ Reschedule (keep dentistId as-is)
     // Set status back to pending so staff can confirm again
-    await updateDoc(apptRef, {
+    const updates: Record<string, unknown> = {
       date: newDate,
       time: newTime,
       status: "pending",
       updatedAt: serverTimestamp(),
-    });
+    };
+    if (meta?.reason) {
+      updates.rescheduleReason = String(meta.reason).trim();
+    }
+    await updateDoc(apptRef, updates);
 
     return { success: true };
   } catch (error) {

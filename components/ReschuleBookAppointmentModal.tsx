@@ -101,6 +101,7 @@ export default function ReschuleBookAppointmentModal({
 }: Props) {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
 
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [takenSlots, setTakenSlots] = useState<string[]>([]);
@@ -119,6 +120,7 @@ export default function ReschuleBookAppointmentModal({
   const allSlots = useMemo(() => generateTimeSlots("08:00", "17:00", 60), []);
 
   const status = String(appointment?.status || "pending").toLowerCase();
+  const isConfirmed = status === "confirmed";
   const statusBlocked = status === "cancelled" || status === "completed";
   const leadTimeBlockedReason = useMemo(() => {
     if (!enforceThreeHourRule || !appointment?.date || !appointment?.time) return null;
@@ -191,6 +193,7 @@ export default function ReschuleBookAppointmentModal({
 
     setDate(initialDate);
     setTime(initialTime);
+    setRescheduleReason("");
 
     setTakenSlots([]);
     setHolidayReason(null);
@@ -289,6 +292,7 @@ export default function ReschuleBookAppointmentModal({
     !!appointment?.id &&
     !!date &&
     !!time &&
+    (!isConfirmed || !!rescheduleReason.trim()) &&
     !saving &&
     !loadingAvail &&
     !isHoliday &&
@@ -298,13 +302,20 @@ export default function ReschuleBookAppointmentModal({
 
   async function handleSave() {
     if (!appointment?.id) return;
+    const proceed = window.confirm("Are you sure you want to proceed with rescheduling this appointment?");
+    if (!proceed) return;
 
     setSaving(true);
     setErr(null);
     setOk(null);
 
     try {
-      const res = await rescheduleAppointmentAction(appointment.id, date, time);
+      const res = await rescheduleAppointmentAction(
+        appointment.id,
+        date,
+        time,
+        isConfirmed ? rescheduleReason.trim() : undefined
+      );
       if (!res?.success) throw new Error(res?.error || "Failed to reschedule appointment.");
 
       setOk("Appointment rescheduled.");
@@ -445,6 +456,21 @@ export default function ReschuleBookAppointmentModal({
           {isHoliday ? (
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               Not available: {holidayReason || "Clinic is closed on this date."}
+            </div>
+          ) : null}
+
+          {isConfirmed ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
+              <label className="block text-xs font-extrabold text-slate-700">
+                Reason for reschedule (required for confirmed appointments)
+              </label>
+              <textarea
+                value={rescheduleReason}
+                onChange={(e) => setRescheduleReason(e.target.value)}
+                rows={3}
+                className={`${inputBase} mt-2`}
+                placeholder="Please share why you need to reschedule."
+              />
             </div>
           ) : null}
 

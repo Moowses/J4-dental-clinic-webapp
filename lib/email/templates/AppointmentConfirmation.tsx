@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   Body,
   Button,
@@ -10,7 +10,7 @@ import {
   Preview,
   Section,
   Text,
-} from '@react-email/components';
+} from "@react-email/components";
 
 interface AppointmentConfirmationProps {
   patientName: string;
@@ -20,6 +20,7 @@ interface AppointmentConfirmationProps {
   appointmentId: string;
   clinicName?: string;
   appointmentDetailsUrl: string;
+  isPendingApproval?: boolean;
   isRescheduled?: boolean;
   previousDate?: string;
   previousTime?: string;
@@ -34,47 +35,67 @@ export const AppointmentConfirmationEmail = ({
   appointmentId,
   clinicName = "Dental Clinic",
   appointmentDetailsUrl,
+  isPendingApproval = false,
   isRescheduled = false,
   previousDate,
   previousTime,
   patientLabel,
 }: AppointmentConfirmationProps) => {
+  const heading = isPendingApproval
+    ? "Appointment Request Received"
+    : isRescheduled
+    ? "Appointment Rescheduled"
+    : "Appointment Confirmed";
+
   return (
     <Html>
       <Head />
       <Preview>
-        {isRescheduled ? "Appointment Rescheduled" : "Appointment Confirmed"} at {clinicName}
+        {heading} at {clinicName}
       </Preview>
       <Body style={main}>
         <Container style={container}>
-          <Heading style={h1}>
-            {isRescheduled ? "Appointment Rescheduled" : "Appointment Confirmed"}
-          </Heading>
+          <Heading style={h1}>{heading}</Heading>
           <Text style={text}>Hi {patientName},</Text>
           <Text style={text}>
-            {isRescheduled
+            {isPendingApproval
+              ? "Your appointment request has been received and is waiting for admin/front desk confirmation."
+              : isRescheduled
               ? "Your appointment has been rescheduled."
               : "Your appointment has been scheduled."}{" "}
             Appointment for <strong>{patientLabel || serviceName}</strong>.
           </Text>
-          
+
           <Section style={detailsContainer}>
             {isRescheduled && previousDate && previousTime ? (
               <>
-                <Text style={detailRow}><strong>Previous Date:</strong> {previousDate}</Text>
-                <Text style={detailRow}><strong>Previous Time:</strong> {previousTime}</Text>
+                <Text style={detailRow}>
+                  <strong>Previous Date:</strong> {previousDate}
+                </Text>
+                <Text style={detailRow}>
+                  <strong>Previous Time:</strong> {previousTime}
+                </Text>
               </>
             ) : null}
-	            <Text style={detailRow}><strong>Date:</strong> {date}</Text>
-	            <Text style={detailRow}><strong>Time:</strong> {time}</Text>
-	            <Text style={{ ...detailRow, color: "#b45309", fontSize: "13px", marginTop: "4px" }}>
-	              Note: You can’t cancel or reschedule within 3 hours of your scheduled time.
-	            </Text>
-	            <Text style={detailRow}><strong>Reference ID:</strong> {appointmentId}</Text>
-	          </Section>
+            <Text style={detailRow}>
+              <strong>Date:</strong> {date}
+            </Text>
+            <Text style={detailRow}>
+              <strong>Time:</strong> {time}
+            </Text>
+            <Text style={{ ...detailRow, color: "#b45309", fontSize: "13px", marginTop: "4px" }}>
+              Note: You can only cancel or reschedule once per appointment. If your appointment is already
+              confirmed by admin/front desk, a reason is required for cancel or reschedule.
+            </Text>
+            <Text style={detailRow}>
+              <strong>Reference ID:</strong> {appointmentId}
+            </Text>
+          </Section>
 
           <Text style={text}>
-            Your appointment has been approved by the clinic team. No further confirmation is required from your side.
+            {isPendingApproval
+              ? "You will receive another email once your appointment is confirmed by the clinic team."
+              : "Your appointment has been approved by the clinic team. No further confirmation is required from your side."}
           </Text>
 
           <Section style={buttonContainer}>
@@ -82,14 +103,13 @@ export const AppointmentConfirmationEmail = ({
               View Appointment
             </Button>
           </Section>
-          
-          <Text style={text}>
-            We have attached a calendar invite to this email. Please add it to your calendar!
-          </Text>
-	          <Hr style={hr} />
-          
+
+          <Text style={text}>We have attached a calendar invite to this email. Please add it to your calendar!</Text>
+          <Hr style={hr} />
+
           <Text style={footer}>
-            {clinicName} - 123 Dental Street, City<br />
+            {clinicName} - 123 Dental Street, City
+            <br />
             If you need to reschedule, please contact us immediately.
           </Text>
         </Container>
@@ -101,69 +121,69 @@ export const AppointmentConfirmationEmail = ({
 export default AppointmentConfirmationEmail;
 
 const main = {
-  backgroundColor: '#f6f9fc',
+  backgroundColor: "#f6f9fc",
   fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
 
 const container = {
-  backgroundColor: '#ffffff',
-  margin: '0 auto',
-  padding: '20px 0 48px',
-  marginBottom: '64px',
+  backgroundColor: "#ffffff",
+  margin: "0 auto",
+  padding: "20px 0 48px",
+  marginBottom: "64px",
 };
 
 const h1 = {
-  color: '#333',
-  fontSize: '24px',
-  fontWeight: 'bold',
-  textAlign: 'center' as const,
-  margin: '30px 0',
+  color: "#333",
+  fontSize: "24px",
+  fontWeight: "bold",
+  textAlign: "center" as const,
+  margin: "30px 0",
 };
 
 const text = {
-  color: '#333',
-  fontSize: '16px',
-  lineHeight: '26px',
-  padding: '0 40px',
+  color: "#333",
+  fontSize: "16px",
+  lineHeight: "26px",
+  padding: "0 40px",
 };
 
 const detailsContainer = {
-  padding: '20px 40px',
-  backgroundColor: '#f9f9f9',
-  marginBottom: '20px',
+  padding: "20px 40px",
+  backgroundColor: "#f9f9f9",
+  marginBottom: "20px",
 };
 
 const detailRow = {
-  margin: '10px 0',
-  color: '#555',
-  fontSize: '16px',
+  margin: "10px 0",
+  color: "#555",
+  fontSize: "16px",
 };
 
 const buttonContainer = {
-  textAlign: 'center' as const,
-  margin: '30px 0',
+  textAlign: "center" as const,
+  margin: "30px 0",
 };
 
 const button = {
-  backgroundColor: '#007bff',
-  borderRadius: '5px',
-  color: '#fff',
-  fontSize: '16px',
-  fontWeight: 'bold',
-  textDecoration: 'none',
-  textAlign: 'center' as const,
-  display: 'block',
-  padding: '12px 20px',
+  backgroundColor: "#007bff",
+  borderRadius: "5px",
+  color: "#fff",
+  fontSize: "16px",
+  fontWeight: "bold",
+  textDecoration: "none",
+  textAlign: "center" as const,
+  display: "block",
+  padding: "12px 20px",
 };
 
 const hr = {
-  borderColor: '#e6ebf1',
-  margin: '20px 0',
+  borderColor: "#e6ebf1",
+  margin: "20px 0",
 };
 
 const footer = {
-  color: '#8898aa',
-  fontSize: '12px',
-  lineHeight: '16px',
-  textAlign: 'center' as const,
+  color: "#8898aa",
+  fontSize: "12px",
+  lineHeight: "16px",
+  textAlign: "center" as const,
 };

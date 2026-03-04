@@ -29,6 +29,34 @@ export async function sendAppointmentConfirmationEmailAction(input: {
   return res;
 }
 
+export async function sendAppointmentRequestEmailAction(input: {
+  appointmentId: string;
+  date: string;
+  time: string;
+  serviceName: string;
+  patientName: string;
+  patientEmail: string;
+}) {
+  const { appointmentId, date, time, serviceName, patientName, patientEmail } = input;
+  if (!appointmentId || !date || !time || !patientEmail) {
+    return { success: false, error: "Missing required fields" };
+  }
+
+  console.log("[booking-request-email] start", { appointmentId, patientEmail });
+  const res = await sendAppointmentEmail({
+    id: appointmentId,
+    date,
+    time,
+    serviceName,
+    patientName,
+    patientEmail,
+    isPendingApproval: true,
+    subjectOverride: `Appointment Request Received - ${date}`,
+  });
+  console.log("[booking-request-email] done", res?.success ? "ok" : res?.error);
+  return res;
+}
+
 export async function sendRescheduleEmailsAction(input: {
   appointmentId: string;
   serviceName: string;
@@ -62,7 +90,7 @@ export async function sendRescheduleEmailsAction(input: {
     dentistEmail: dentist?.email || null,
   });
 
-  const results: Array<{ who: string; success: boolean; error?: any }> = [];
+  const results: Array<{ who: string; success: boolean; error?: unknown }> = [];
 
   if (patient?.email) {
     const res = await sendAppointmentEmail({

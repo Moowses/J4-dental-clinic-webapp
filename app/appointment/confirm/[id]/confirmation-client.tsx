@@ -37,10 +37,14 @@ export default function ConfirmationClient({
 
   const handleCancel = async () => {
     if (!window.confirm("Are you sure you want to cancel this appointment?")) return;
+    const enteredReason = window.prompt(
+      "Optional: Enter cancellation reason. If this appointment is already confirmed, reason is required."
+    );
+    const cancelReason = String(enteredReason || "").trim() || undefined;
 
     setStatus("loading");
     try {
-      const result = await cancelAppointmentAction(id);
+      const result = await cancelAppointmentAction(id, cancelReason);
       if (result.success) {
         setStatus("cancelled");
       } else {

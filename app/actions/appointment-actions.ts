@@ -31,6 +31,7 @@ import {
 } from "@/lib/types/appointment";
 import {
   sendAppointmentConfirmationEmailAction,
+  sendAppointmentRequestEmailAction,
   sendCancellationEmailAction,
   sendRescheduleEmailsAction,
   sendNoShowEmailAction,
@@ -40,8 +41,11 @@ import { getBillingDetails, setupPaymentPlan } from "@/lib/services/billing-serv
 import type { BillingRecord } from "@/lib/types/billing";
 import {
   collection,
+  doc,
   getDocs,
   query,
+  serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/firebase";
@@ -112,6 +116,23 @@ export async function bookAppointmentAction(
         throw new Error(result.error || "Failed to create appointment");
       }
 
+      try {
+        const patientEmail = String(auth.currentUser?.email || "").trim();
+        if (patientEmail) {
+          await sendAppointmentRequestEmailAction({
+            appointmentId: result.id,
+            date: parsedData.date,
+            time: parsedData.time,
+            serviceName: parsedData.serviceType,
+            patientName:
+              String(parsedData.displayName || auth.currentUser?.displayName || patientEmail || "Patient"),
+            patientEmail,
+          });
+        }
+      } catch (e) {
+        console.error("Failed to send booking request email:", e);
+      }
+
       return { success: true };
     },
     data
@@ -170,6 +191,22 @@ export async function staffBookAppointmentAction(prevState: any, data: FormData)
       throw new Error(result.error || "Failed to create appointment");
     }
 
+    try {
+      const patientEmail = String(patientProfileRes.data.email || "").trim();
+      if (patientEmail) {
+        await sendAppointmentRequestEmailAction({
+          appointmentId: result.id,
+          date: parsed.date,
+          time: parsed.time,
+          serviceName: parsed.serviceType,
+          patientName,
+          patientEmail,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to send booking request email (staff flow):", e);
+    }
+
     return { success: true };
   }, data);
 }
@@ -192,7 +229,8 @@ export async function confirmAppointmentAction(
 
 // Client Action: Cancel Appointment (from Email/Page)
 export async function cancelAppointmentAction(
-  appointmentId: string
+  appointmentId: string,
+  cancelReason?: string
 ): Promise<{ success: boolean; error?: string }> {
   const apptRes = await getAppointmentById(appointmentId);
   if (!apptRes.success || !apptRes.data) {
@@ -203,6 +241,13 @@ export async function cancelAppointmentAction(
   const status = String(appointment.status || "").toLowerCase();
   if (status !== "pending" && status !== "confirmed") {
     return { success: false, error: "Only pending or confirmed appointments can be cancelled." };
+  }
+  const normalizedCancelReason = String(cancelReason || "").trim();
+  if (status === "confirmed" && !normalizedCancelReason) {
+    return {
+      success: false,
+      error: "Cancellation reason is required for confirmed appointments.",
+    };
   }
 
   const dateStr = String(appointment.date || "").trim();
@@ -232,6 +277,17 @@ export async function cancelAppointmentAction(
 
   const result = await updateAppointmentStatus(appointmentId, "cancelled");
   if (!result?.success) return { success: false, error: result?.error || "Failed to cancel appointment." };
+
+  if (normalizedCancelReason) {
+    try {
+      await updateDoc(doc(db, "appointments", appointmentId), {
+        cancellationReason: normalizedCancelReason,
+        cancelledAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error("Failed to save cancellation reason:", e);
+    }
+  }
 
   try {
     const profileRes = await getUserProfile(appointment.patientId);
@@ -459,7 +515,8 @@ export async function updateAppointmentStatusAction(
 export async function rescheduleAppointmentAction(
   appointmentId: string,
   newDate: string,
-  newTime: string
+  newTime: string,
+  rescheduleReason?: string
 ) {
   try {
     if (!appointmentId || !newDate || !newTime) {
@@ -477,9 +534,16 @@ export async function rescheduleAppointmentAction(
     const dentistId = (currentAppt.data as any).dentistId;
     const serviceName = String((currentAppt.data as any).serviceType || "Dental Service");
     const currentStatus = String((currentAppt.data as any).status || "").toLowerCase();
+    const normalizedRescheduleReason = String(rescheduleReason || "").trim();
 
     if (currentStatus !== "pending" && currentStatus !== "confirmed") {
       return { success: false, error: "Only pending or confirmed appointments can be rescheduled." };
+    }
+    if (currentStatus === "confirmed" && !normalizedRescheduleReason) {
+      return {
+        success: false,
+        error: "Reschedule reason is required for confirmed appointments.",
+      };
     }
 
     if (oldDate && oldTime) {
@@ -507,7 +571,9 @@ export async function rescheduleAppointmentAction(
       }
     }
 
-    const res = await rescheduleAppointment(appointmentId, newDate, newTime);
+    const res = await rescheduleAppointment(appointmentId, newDate, newTime, {
+      reason: normalizedRescheduleReason || undefined,
+    });
     if (!res.success) return { success: false, error: res.error || "Failed to reschedule" };
 
     const patientProfileRes = patientId ? await getUserProfile(patientId) : null;

@@ -21,6 +21,7 @@ interface EmailAppointmentDetails {
   previousTime?: string;
   patientLabel?: string;
   subjectOverride?: string;
+  isPendingApproval?: boolean;
 }
 
 interface NoShowEmailDetails {
@@ -41,9 +42,14 @@ interface CancellationEmailDetails {
   patientEmail: string;
 }
 
+function getAppBaseUrl() {
+  const raw = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").trim();
+  return raw.replace(/\/+$/, "");
+}
+
 export async function sendAppointmentEmail(details: EmailAppointmentDetails, apiKey?: string) {
   const finalApiKey = apiKey || process.env.RESEND_API_KEY;
-  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const APP_URL = getAppBaseUrl();
   const recipientEmail = details.recipientEmail || details.patientEmail;
   const recipientName = details.recipientName || details.patientName;
 
@@ -94,6 +100,7 @@ export async function sendAppointmentEmail(details: EmailAppointmentDetails, api
         serviceName: details.serviceName,
         appointmentId: details.id,
         appointmentDetailsUrl,
+        isPendingApproval: details.isPendingApproval,
         isRescheduled: details.isRescheduled,
         previousDate: details.previousDate,
         previousTime: details.previousTime,
@@ -130,7 +137,7 @@ export async function sendAppointmentEmail(details: EmailAppointmentDetails, api
 
 export async function sendNoShowEmail(details: NoShowEmailDetails, apiKey?: string) {
   const finalApiKey = apiKey || process.env.RESEND_API_KEY;
-  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const APP_URL = getAppBaseUrl();
 
   if (!finalApiKey) {
     console.warn("RESEND_API_KEY is missing. Email sending skipped.");
@@ -173,7 +180,7 @@ export async function sendNoShowEmail(details: NoShowEmailDetails, apiKey?: stri
 
 export async function sendCancellationEmail(details: CancellationEmailDetails, apiKey?: string) {
   const finalApiKey = apiKey || process.env.RESEND_API_KEY;
-  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const APP_URL = getAppBaseUrl();
 
   if (!finalApiKey) {
     console.warn("RESEND_API_KEY is missing. Email sending skipped.");
