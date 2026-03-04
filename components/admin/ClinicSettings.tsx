@@ -27,6 +27,7 @@ const DAY_ORDER = [
   "sunday",
 ] as const;
 type DayKey = (typeof DAY_ORDER)[number];
+const PROCEED_PROMPT = "Are you sure to proceed?";
 
 const dayLabel = (d: string) => d.charAt(0).toUpperCase() + d.slice(1);
 
@@ -150,6 +151,7 @@ export default function ClinicSettings() {
 
   const handleSave = async () => {
     if (!settings) return;
+    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
     setIsSaving(true);
     setBanner(null);
 

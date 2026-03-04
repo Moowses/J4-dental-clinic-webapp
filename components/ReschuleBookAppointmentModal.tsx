@@ -91,6 +91,7 @@ function isSameYMD(a: string, b: string) {
 
 const inputBase =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-300";
+const PROCEED_PROMPT = "Are you sure to proceed?";
 
 export default function ReschuleBookAppointmentModal({
   open,
@@ -302,7 +303,7 @@ export default function ReschuleBookAppointmentModal({
 
   async function handleSave() {
     if (!appointment?.id) return;
-    const proceed = window.confirm("Are you sure you want to proceed with rescheduling this appointment?");
+    const proceed = window.confirm(PROCEED_PROMPT);
     if (!proceed) return;
 
     setSaving(true);

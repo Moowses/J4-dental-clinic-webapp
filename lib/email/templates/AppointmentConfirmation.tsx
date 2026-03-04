@@ -59,11 +59,11 @@ export const AppointmentConfirmationEmail = ({
           <Text style={text}>Hi {patientName},</Text>
           <Text style={text}>
             {isPendingApproval
-              ? "Your appointment request has been received and is waiting for admin/front desk confirmation."
+              ? "Your appointment request has been received and is now waiting for admin/front desk confirmation."
               : isRescheduled
               ? "Your appointment has been rescheduled."
-              : "Your appointment has been scheduled."}{" "}
-            Appointment for <strong>{patientLabel || serviceName}</strong>.
+              : "Your appointment has been booked successfully."}{" "}
+            Service: <strong>{patientLabel || serviceName}</strong>.
           </Text>
 
           <Section style={detailsContainer}>
@@ -84,8 +84,9 @@ export const AppointmentConfirmationEmail = ({
               <strong>Time:</strong> {time}
             </Text>
             <Text style={{ ...detailRow, color: "#b45309", fontSize: "13px", marginTop: "4px" }}>
-              Note: You can only cancel or reschedule once per appointment. If your appointment is already
-              confirmed by admin/front desk, a reason is required for cancel or reschedule.
+              Note: Each appointment can only be cancelled or rescheduled once to maintain proper scheduling.
+              If your appointment is already confirmed by admin/front desk, a reason is required for cancel or
+              reschedule.
             </Text>
             <Text style={detailRow}>
               <strong>Reference ID:</strong> {appointmentId}

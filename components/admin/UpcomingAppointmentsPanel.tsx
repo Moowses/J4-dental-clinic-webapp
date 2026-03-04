@@ -39,6 +39,7 @@ type BusyMap = Record<
 
 const inputBase =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-300";
+const PROCEED_PROMPT = "Are you sure to proceed?";
 
 function pillClass(status: string) {
   const s = (status || "pending").toLowerCase();
@@ -180,6 +181,8 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
   }
 
   async function handleConfirm(appointmentId: string) {
+    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
+
     setRowBusy(appointmentId, { confirming: true });
     setErr(null);
     setSuccessMsg(null);
@@ -198,6 +201,8 @@ const [reschedAppt, setReschedAppt] = useState<AppointmentWithPatient | null>(nu
   }
 
   async function handleCancel(appointmentId: string) {
+    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
+
     setRowBusy(appointmentId, { cancelling: true });
     setErr(null);
     setSuccessMsg(null);

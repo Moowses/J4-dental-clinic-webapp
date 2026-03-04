@@ -2,7 +2,7 @@
 
 import NextImage from "next/image";
 import Link from "next/link";
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { getUserAppointments } from "@/lib/services/appointment-service";
 import { getPatientRecord } from "@/lib/services/patient-service";
@@ -29,6 +29,7 @@ import { auth } from "@/lib/firebase/firebase";
 import { Odontogram } from "react-odontogram";
 
 const BRAND = "#0E4B5A";
+const PROCEED_PROMPT = "Are you sure to proceed?";
 const CROP_PREVIEW_SIZE = 240;
 const OUTPUT_SIZE = 512;
 
@@ -527,6 +528,11 @@ function AccountSettingsForm({
   const dragCenterRef = useRef<{ x: number; y: number } | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const confirmSaveSubmit = useCallback((e: FormEvent<HTMLFormElement>) => {
+    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) {
+      e.preventDefault();
+    }
+  }, []);
 
   const drawPreview = useCallback(() => {
     const img = imageRef.current;
@@ -668,7 +674,7 @@ function AccountSettingsForm({
         )}
       </div>
 
-      <form action={formAction} className="mt-5 space-y-4">
+      <form action={formAction} onSubmit={confirmSaveSubmit} className="mt-5 space-y-4">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-4">
@@ -1446,6 +1452,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     if (!cancelTarget) return;
     const id = String((cancelTarget as any).id || "");
     if (!id) return;
+    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
     const status = String((cancelTarget as any).status || "").toLowerCase();
     const normalized = cancelReasonInput.trim();
 
@@ -1800,6 +1807,3 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     </main>
   );
 }
-
-
-

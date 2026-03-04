@@ -13,6 +13,7 @@ import { getAllProcedures } from "@/lib/services/clinic-service";
 import type { DentalProcedure } from "@/lib/types/clinic";
 
 const BRAND = "#0E4B5A";
+const PROCEED_PROMPT = "Are you sure to proceed?";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TIME_SLOTS = ["08:00", "09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"];
 
@@ -418,6 +419,10 @@ export default function BookAppointmentModal({
                   e.preventDefault();
                   setClientError("Please enter your full name.");
                   return;
+                }
+
+                if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) {
+                  e.preventDefault();
                 }
               }}
             >

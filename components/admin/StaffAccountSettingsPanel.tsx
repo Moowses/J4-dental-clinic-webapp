@@ -7,6 +7,7 @@ import { updateUserProfile } from "@/lib/services/auth-service";
 
 const CROP_PREVIEW_SIZE = 220;
 const OUTPUT_SIZE = 512;
+const PROCEED_PROMPT = "Are you sure to proceed?";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -175,6 +176,7 @@ export default function StaffAccountSettingsPanel() {
 
   const handleSaveName = async () => {
     if (!user) return;
+    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
     const nextName = displayName.trim();
     if (nextName.length < 2) {
       setStatus("Name must be at least 2 characters.");

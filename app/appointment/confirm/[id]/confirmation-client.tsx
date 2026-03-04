@@ -4,6 +4,8 @@ import { useState } from "react";
 import { confirmAppointmentAction, cancelAppointmentAction } from "@/app/actions/appointment-actions";
 import { useRouter } from "next/navigation";
 
+const PROCEED_PROMPT = "Are you sure to proceed?";
+
 export default function ConfirmationClient({ 
   id, 
   service, 
@@ -20,6 +22,7 @@ export default function ConfirmationClient({
   const router = useRouter();
 
   const handleConfirm = async () => {
+    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
     setStatus("loading");
     try {
       const result = await confirmAppointmentAction(id);
@@ -36,7 +39,7 @@ export default function ConfirmationClient({
   };
 
   const handleCancel = async () => {
-    if (!window.confirm("Are you sure you want to cancel this appointment?")) return;
+    if (!window.confirm(PROCEED_PROMPT)) return;
     const enteredReason = window.prompt(
       "Optional: Enter cancellation reason. If this appointment is already confirmed, reason is required."
     );
