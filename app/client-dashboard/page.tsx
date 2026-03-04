@@ -251,7 +251,7 @@ function CancelAppointmentModal({
   const proceedPrompt = "are you want proceed?";
 
   const status = String((appointment as any).status || "").toLowerCase();
-  const reasonRequired = status === "confirmed";
+  const reasonEmpty = !reason.trim();
   const serviceType = String((appointment as any).serviceType || "Appointment");
   const date = String((appointment as any).date || "");
   const time = formatTime12h(String((appointment as any).time || ""));
@@ -285,7 +285,7 @@ function CancelAppointmentModal({
 
         <div className="mt-4">
           <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
-            Reason {reasonRequired ? "(Required)" : "(Optional)"}
+            Reason (Required)
           </label>
           <textarea
             value={reason}
@@ -294,9 +294,7 @@ function CancelAppointmentModal({
             placeholder="Type your reason here..."
             className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-300"
           />
-          {reasonRequired ? (
-            <p className="mt-2 text-xs text-amber-700">Confirmed appointments require a cancellation reason.</p>
-          ) : null}
+          <p className="mt-2 text-xs text-amber-700">Cancellation reason is required.</p>
         </div>
 
         {error ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
@@ -319,7 +317,7 @@ function CancelAppointmentModal({
               if (typeof window !== "undefined" && !window.confirm(proceedPrompt)) return;
               onConfirm();
             }}
-            disabled={submitting}
+            disabled={submitting || reasonEmpty}
             className="rounded-xl border border-red-700 bg-red-700 px-4 py-2 text-sm font-extrabold text-white hover:bg-red-800 disabled:opacity-60"
           >
             {submitting ? "Cancelling..." : "Proceed Cancel"}
@@ -1459,22 +1457,16 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     if (!cancelTarget) return;
     const id = String((cancelTarget as any).id || "");
     if (!id) return;
-    const status = String((cancelTarget as any).status || "").toLowerCase();
     const normalized = cancelReasonInput.trim();
-
-    let cancelReason: string | undefined = normalized || undefined;
-    if (status === "confirmed") {
-      if (!normalized) {
-        setCancelModalError("Cancellation reason is required for confirmed appointments.");
-        return;
-      }
-      cancelReason = normalized;
+    if (!normalized) {
+      setCancelModalError("Cancellation reason is required.");
+      return;
     }
 
     try {
       setCancelSubmitting(true);
       setCancelModalError(null);
-      const res = await cancelAppointmentAction(id, cancelReason);
+      const res = await cancelAppointmentAction(id, normalized);
       if (!res?.success) {
         setCancelModalError(res?.error || "Failed to cancel appointment.");
         return;
