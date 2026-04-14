@@ -15,6 +15,7 @@ type AppointmentLike = {
   time?: string; // "HH:mm"
   dentistId?: string | null;
   status?: string;
+  rescheduleCount?: number;
 };
 
 type Props = {
@@ -121,6 +122,7 @@ export default function ReschuleBookAppointmentModal({
   const allSlots = useMemo(() => generateTimeSlots("08:00", "17:00", 60), []);
 
   const status = String(appointment?.status || "pending").toLowerCase();
+  const rescheduleCount = Number(appointment?.rescheduleCount || 0);
   const isConfirmed = status === "confirmed";
   const statusBlocked = status === "cancelled" || status === "completed";
   const leadTimeBlockedReason = useMemo(() => {
@@ -142,7 +144,8 @@ export default function ReschuleBookAppointmentModal({
     }
     return null;
   }, [appointment?.date, appointment?.time, enforceThreeHourRule]);
-  const rescheduleBlocked = statusBlocked || Boolean(leadTimeBlockedReason);
+  const rescheduleBlocked =
+    statusBlocked || Boolean(leadTimeBlockedReason) || rescheduleCount >= 1;
 
   const todayYMD = useMemo(() => getTodayYMD(), []);
 
@@ -439,6 +442,12 @@ export default function ReschuleBookAppointmentModal({
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               This appointment can’t be rescheduled because it is{" "}
               <span className="font-extrabold">{status.toUpperCase()}</span>.
+            </div>
+          ) : null}
+
+          {!statusBlocked && rescheduleCount >= 1 ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              This appointment has already been rescheduled once. Further online rescheduling is disabled.
             </div>
           ) : null}
 

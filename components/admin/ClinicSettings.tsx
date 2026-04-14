@@ -7,7 +7,10 @@ import {
   getClinicSettingsAction,
   updateClinicSettingsAction,
 } from "@/app/actions/clinic-actions";
-import { syncPatientIdCounterAction } from "@/app/actions/patient-admin-actions";
+import {
+  selectiveResetClinicDataAction,
+  syncPatientIdCounterAction,
+} from "@/app/actions/patient-admin-actions";
 import { useAuth } from "@/lib/hooks/useAuth";
 import type { ClinicSettings } from "@/lib/types/clinic";
 
@@ -28,10 +31,39 @@ const DAY_ORDER = [
 ] as const;
 type DayKey = (typeof DAY_ORDER)[number];
 const PROCEED_PROMPT = "Are you sure to proceed?";
+const RESET_CONFIRMATION_TEXT = "DELETE SELECTED DATA";
+
+type ResetSelection = {
+  patientRecords: boolean;
+  appointments: boolean;
+  billingRecords: boolean;
+  patientAccounts: boolean;
+  systemAccounts: boolean;
+  proceduresAndServices: boolean;
+  patientIdCounter: boolean;
+  deleteLinkedImages: boolean;
+};
+
+type ResetSummary = {
+  patientRecordsDeleted: number;
+  appointmentsDeleted: number;
+  billingRecordsDeleted: number;
+  patientAccountsDeleted: number;
+  patientAuthDeleted: number;
+  systemAccountsDeleted: number;
+  systemAuthDeleted: number;
+  dentistProfilesDeleted: number;
+  proceduresDeleted: number;
+  servicesDeleted: number;
+  patientIdCounterReset: boolean;
+  imagesDeleted: number;
+  imagesFailed: number;
+  preservedCurrentAdmin: boolean;
+};
 
 const dayLabel = (d: string) => d.charAt(0).toUpperCase() + d.slice(1);
 
-const normalizeTime = (v: any, fallback: string) => {
+const normalizeTime = (v: unknown, fallback: string) => {
   const s = String(v ?? "").trim();
   // allow "09:00" or "9:00" -> normalize to 09:00 if possible
   const m = s.match(/^(\d{1,2}):(\d{2})$/);
@@ -71,6 +103,20 @@ export default function ClinicSettings() {
   const [updateMsg, setUpdateMsg] = useState<{ type: "ok" | "err"; msg: string } | null>(
     null
   );
+  const [resetSelection, setResetSelection] = useState<ResetSelection>({
+    patientRecords: false,
+    appointments: false,
+    billingRecords: false,
+    patientAccounts: false,
+    systemAccounts: false,
+    proceduresAndServices: false,
+    patientIdCounter: false,
+    deleteLinkedImages: false,
+  });
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resettingData, setResettingData] = useState(false);
+  const [resetMsg, setResetMsg] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [resetSummary, setResetSummary] = useState<ResetSummary | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -90,7 +136,10 @@ export default function ClinicSettings() {
             const merged = buildDefault();
             merged.maxConcurrentPatients = Number(raw.maxConcurrentPatients ?? merged.maxConcurrentPatients);
 
-            const rawHours = (raw.operatingHours || {}) as Record<string, any>;
+            const rawHours = (raw.operatingHours || {}) as Record<
+              string,
+              Partial<OperatingHoursDay> | undefined
+            >;
             for (const d of DAY_ORDER) {
               const h = rawHours[d] || rawHours[dayLabel(d)] || null;
               if (h) {
@@ -135,7 +184,36 @@ export default function ClinicSettings() {
     return DAY_ORDER.filter((d) => settings.operatingHours[d]);
   }, [settings]);
 
-  const updateDay = (day: DayKey, field: keyof OperatingHoursDay, value: any) => {
+  const hasResetSelection = useMemo(
+    () =>
+      Object.entries(resetSelection).some(
+        ([key, value]) => key !== "deleteLinkedImages" && Boolean(value)
+      ),
+    [resetSelection]
+  );
+
+  const resetWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    if (resetSelection.patientRecords && !resetSelection.appointments) {
+      warnings.push("Patient records without deleting appointments will leave appointment rows pointing to removed patients.");
+    }
+    if (resetSelection.patientAccounts && !resetSelection.patientRecords) {
+      warnings.push("Patient user accounts without deleting patient records will leave orphaned patient record documents.");
+    }
+    if (resetSelection.deleteLinkedImages && !hasResetSelection) {
+      warnings.push("Linked image cleanup only runs for the record groups selected above.");
+    }
+    if (resetSelection.systemAccounts) {
+      warnings.push("System account reset deletes front-desk, dentist, and other admin accounts except the one currently signed in.");
+    }
+    return warnings;
+  }, [hasResetSelection, resetSelection]);
+
+  const updateDay = (
+    day: DayKey,
+    field: keyof OperatingHoursDay,
+    value: OperatingHoursDay[keyof OperatingHoursDay]
+  ) => {
     if (!settings) return;
     setSettings({
       ...settings,
@@ -217,6 +295,89 @@ export default function ClinicSettings() {
     }
   };
 
+  const toggleResetSelection = (key: keyof ResetSelection) => {
+    setResetSelection((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const applyResetPreset = (preset: "fresh" | "full" | "users-only") => {
+    if (preset === "fresh") {
+      setResetSelection({
+        patientRecords: true,
+        appointments: true,
+        billingRecords: true,
+        patientAccounts: true,
+        systemAccounts: false,
+        proceduresAndServices: false,
+        patientIdCounter: true,
+        deleteLinkedImages: true,
+      });
+      return;
+    }
+
+    if (preset === "full") {
+      setResetSelection({
+        patientRecords: true,
+        appointments: true,
+        billingRecords: true,
+        patientAccounts: true,
+        systemAccounts: true,
+        proceduresAndServices: false,
+        patientIdCounter: true,
+        deleteLinkedImages: true,
+      });
+      return;
+    }
+
+    setResetSelection({
+      patientRecords: false,
+      appointments: false,
+      billingRecords: false,
+      patientAccounts: false,
+      systemAccounts: true,
+      proceduresAndServices: false,
+      patientIdCounter: false,
+      deleteLinkedImages: true,
+    });
+  };
+
+  const handleSelectiveReset = async () => {
+    if (!token) {
+      setResetMsg({ type: "err", msg: "Unauthorized: No token available." });
+      return;
+    }
+
+    if (!hasResetSelection) {
+      setResetMsg({ type: "err", msg: "Select at least one dataset to delete." });
+      return;
+    }
+
+    setResettingData(true);
+    setResetMsg(null);
+    setResetSummary(null);
+
+    try {
+      const res = await selectiveResetClinicDataAction({
+        idToken: token,
+        confirmationText: resetConfirm,
+        selection: resetSelection,
+      });
+
+      if (!res?.success) {
+        setResetMsg({ type: "err", msg: res?.error || "Failed to delete selected data." });
+        return;
+      }
+
+      setResetSummary((res as { summary?: ResetSummary }).summary || null);
+      setResetMsg({ type: "ok", msg: "Selected clinic data deleted successfully." });
+      setResetConfirm("");
+    } catch (e) {
+      console.error(e);
+      setResetMsg({ type: "err", msg: "Failed to delete selected data." });
+    } finally {
+      setResettingData(false);
+    }
+  };
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
       <div className="flex items-end justify-between gap-3">
@@ -242,61 +403,302 @@ export default function ClinicSettings() {
       </div>
 
       {role === "admin" && (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-extrabold text-slate-900">
-                Check Data and System Integrity
-              </p>
-              <p className="text-xs text-slate-500">
-                Sync the Patient ID counter to the latest recorded ID.
-              </p>
+        <div className="mt-4 space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-extrabold text-slate-900">
+                  Check Data and System Integrity
+                </p>
+                <p className="text-xs text-slate-500">
+                  Sync the Patient ID counter to the latest recorded ID.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSyncCounter}
+                  disabled={syncingCounter}
+                  className={`px-4 py-2 rounded-xl font-extrabold text-xs transition ${
+                    syncingCounter
+                      ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                      : "bg-white border border-slate-200 text-slate-900 hover:bg-slate-100"
+                  }`}
+                >
+                  {syncingCounter ? "Checking..." : "Check Data and System Integrity"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSystemUpdateCheck}
+                  disabled={checkingUpdate}
+                  className={`px-4 py-2 rounded-xl font-extrabold text-xs transition ${
+                    checkingUpdate
+                      ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                      : "bg-white border border-slate-200 text-slate-900 hover:bg-slate-100"
+                  }`}
+                >
+                  {checkingUpdate ? "Checking updates..." : "Run System Update Check"}
+                </button>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSyncCounter}
-                disabled={syncingCounter}
-                className={`px-4 py-2 rounded-xl font-extrabold text-xs transition ${
-                  syncingCounter
-                    ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                    : "bg-white border border-slate-200 text-slate-900 hover:bg-slate-100"
+            {syncMsg && (
+              <p
+                className={`mt-3 text-xs font-extrabold ${
+                  syncMsg.type === "ok" ? "text-emerald-700" : "text-rose-600"
                 }`}
               >
-                {syncingCounter ? "Checking..." : "Check Data and System Integrity"}
-              </button>
-              <button
-                type="button"
-                onClick={handleSystemUpdateCheck}
-                disabled={checkingUpdate}
-                className={`px-4 py-2 rounded-xl font-extrabold text-xs transition ${
-                  checkingUpdate
-                    ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                    : "bg-white border border-slate-200 text-slate-900 hover:bg-slate-100"
+                {syncMsg.msg}
+              </p>
+            )}
+            {updateMsg && (
+              <p
+                className={`mt-2 text-xs font-extrabold ${
+                  updateMsg.type === "ok" ? "text-emerald-700" : "text-rose-600"
                 }`}
               >
-                {checkingUpdate ? "Checking updates..." : "Run System Update Check"}
-              </button>
+                {updateMsg.msg}
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-extrabold text-rose-900">Danger Zone</p>
+                  <p className="text-xs text-rose-700">
+                    Select exactly which records to remove. Linked CMS images are deleted only if enabled below.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => applyResetPreset("fresh")}
+                    className="px-3 py-2 rounded-xl border border-rose-200 bg-white text-rose-900 text-xs font-extrabold hover:bg-rose-100"
+                  >
+                    Fresh Operational Start
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyResetPreset("full")}
+                    className="px-3 py-2 rounded-xl border border-rose-200 bg-white text-rose-900 text-xs font-extrabold hover:bg-rose-100"
+                  >
+                    Full Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyResetPreset("users-only")}
+                    className="px-3 py-2 rounded-xl border border-rose-200 bg-white text-rose-900 text-xs font-extrabold hover:bg-rose-100"
+                  >
+                    System Users Only
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-rose-100 bg-white p-4">
+                  <p className="text-xs font-extrabold uppercase tracking-wide text-rose-900">
+                    Patient and Operations
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={resetSelection.patientRecords}
+                        onChange={() => toggleResetSelection("patientRecords")}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">Patient records</span>
+                        <span className="block text-xs text-slate-500">Deletes the `patient_records` collection.</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={resetSelection.appointments}
+                        onChange={() => toggleResetSelection("appointments")}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">Appointments and treatment history</span>
+                        <span className="block text-xs text-slate-500">Deletes appointments, embedded treatment notes, charts, and attachment references.</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={resetSelection.billingRecords}
+                        onChange={() => toggleResetSelection("billingRecords")}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">Billing records</span>
+                        <span className="block text-xs text-slate-500">Deletes the `billing_records` collection.</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={resetSelection.patientAccounts}
+                        onChange={() => toggleResetSelection("patientAccounts")}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">Patient user accounts</span>
+                        <span className="block text-xs text-slate-500">Deletes client `users` docs and their Firebase Auth accounts.</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={resetSelection.patientIdCounter}
+                        onChange={() => toggleResetSelection("patientIdCounter")}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">Patient ID counter</span>
+                        <span className="block text-xs text-slate-500">Resets `counters/patientId` back to the current year with sequence `0`.</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-rose-100 bg-white p-4">
+                  <p className="text-xs font-extrabold uppercase tracking-wide text-rose-900">
+                    Staff, Catalog, and Files
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={resetSelection.systemAccounts}
+                        onChange={() => toggleResetSelection("systemAccounts")}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">System user accounts</span>
+                        <span className="block text-xs text-slate-500">Deletes front-desk, dentist, and admin accounts except the one currently signed in. Dentist profiles are removed too.</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={resetSelection.proceduresAndServices}
+                        onChange={() => toggleResetSelection("proceduresAndServices")}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">Procedures and service catalog</span>
+                        <span className="block text-xs text-slate-500">Deletes blueprint procedures and website service catalog entries.</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={resetSelection.deleteLinkedImages}
+                        onChange={() => toggleResetSelection("deleteLinkedImages")}
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">Delete linked CMS images</span>
+                        <span className="block text-xs text-slate-500">Deletes Cloudinary files attached to selected appointments, users, and services.</span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 p-3">
+                    <p className="text-xs font-extrabold text-rose-900">
+                      Confirmation phrase
+                    </p>
+                    <p className="mt-1 text-xs text-rose-700">
+                      Type <span className="font-black">{RESET_CONFIRMATION_TEXT}</span> before deleting.
+                    </p>
+                    <input
+                      type="text"
+                      value={resetConfirm}
+                      onChange={(e) => setResetConfirm(e.target.value)}
+                      placeholder={RESET_CONFIRMATION_TEXT}
+                      className="mt-3 w-full rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-extrabold text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {resetWarnings.length > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-xs font-extrabold uppercase tracking-wide text-amber-900">
+                    Review Before Delete
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {resetWarnings.map((warning) => (
+                      <p key={warning} className="text-xs font-bold text-amber-800">
+                        {warning}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {resetMsg && (
+                <div
+                  className={`rounded-2xl border p-4 text-sm font-bold ${
+                    resetMsg.type === "ok"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : "border-rose-200 bg-rose-50 text-rose-800"
+                  }`}
+                >
+                  {resetMsg.msg}
+                </div>
+              )}
+
+              {resetSummary && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-extrabold uppercase tracking-wide text-slate-900">
+                    Last Reset Summary
+                  </p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <p className="text-xs font-bold text-slate-700">Patient records deleted: {resetSummary.patientRecordsDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Appointments deleted: {resetSummary.appointmentsDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Billing records deleted: {resetSummary.billingRecordsDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Patient accounts deleted: {resetSummary.patientAccountsDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Patient auth users deleted: {resetSummary.patientAuthDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">System accounts deleted: {resetSummary.systemAccountsDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">System auth users deleted: {resetSummary.systemAuthDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Dentist profiles deleted: {resetSummary.dentistProfilesDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Procedures deleted: {resetSummary.proceduresDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Services deleted: {resetSummary.servicesDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Images deleted: {resetSummary.imagesDeleted}</p>
+                    <p className="text-xs font-bold text-slate-700">Images failed: {resetSummary.imagesFailed}</p>
+                    <p className="text-xs font-bold text-slate-700">Counter reset: {resetSummary.patientIdCounterReset ? "Yes" : "No"}</p>
+                    <p className="text-xs font-bold text-slate-700">Current admin preserved: {resetSummary.preservedCurrentAdmin ? "Yes" : "No"}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSelectiveReset}
+                  disabled={
+                    resettingData ||
+                    !hasResetSelection ||
+                    resetConfirm.trim() !== RESET_CONFIRMATION_TEXT
+                  }
+                  className={`px-4 py-2 rounded-xl font-extrabold text-sm transition ${
+                    resettingData ||
+                    !hasResetSelection ||
+                    resetConfirm.trim() !== RESET_CONFIRMATION_TEXT
+                      ? "bg-rose-200 text-rose-500 cursor-not-allowed"
+                      : "bg-rose-600 text-white hover:bg-rose-700"
+                  }`}
+                >
+                  {resettingData ? "Deleting selected data..." : "Delete Selected Data"}
+                </button>
+              </div>
             </div>
           </div>
-          {syncMsg && (
-            <p
-              className={`mt-3 text-xs font-extrabold ${
-                syncMsg.type === "ok" ? "text-emerald-700" : "text-rose-600"
-              }`}
-            >
-              {syncMsg.msg}
-            </p>
-          )}
-          {updateMsg && (
-            <p
-              className={`mt-2 text-xs font-extrabold ${
-                updateMsg.type === "ok" ? "text-emerald-700" : "text-rose-600"
-              }`}
-            >
-              {updateMsg.msg}
-            </p>
-          )}
         </div>
       )}
 

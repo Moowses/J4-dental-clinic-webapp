@@ -313,10 +313,15 @@ export async function rescheduleAppointment(
 
     const appt = snap.data() as Appointment;
     const status = String(appt.status || "pending").toLowerCase();
+    const rescheduleCount = Number(appt.rescheduleCount || 0);
 
     // ❌ cannot reschedule cancelled/completed
     if (status === "cancelled" || status === "completed") {
       return { success: false, error: "Cannot reschedule cancelled/completed appointments" };
+    }
+
+    if (rescheduleCount >= 1) {
+      return { success: false, error: "This appointment has already been rescheduled once." };
     }
 
     // No-op if same date/time
@@ -360,6 +365,8 @@ export async function rescheduleAppointment(
       date: newDate,
       time: newTime,
       status: "pending",
+      rescheduleCount: rescheduleCount + 1,
+      rescheduledAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
     if (meta?.reason) {

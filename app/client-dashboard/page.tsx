@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import NextImage from "next/image";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { getUserAppointments } from "@/lib/services/appointment-service";
@@ -1194,6 +1194,7 @@ function ClientTreatmentHistoryModal({
 }
 
 export default function ClientDashboardPage() {
+  const router = useRouter();
   const { user, role, loading, logout } = useAuth();
 
   const [active, setActive] = useState<"dashboard" | "transactions" | "settings">("dashboard");
@@ -1223,6 +1224,12 @@ export default function ClientDashboardPage() {
   useEffect(() => {
     setPhotoUrl(user?.photoURL || null);
   }, [user?.photoURL]);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/");
+    }
+  }, [loading, router, user]);
 
   const [openApptModal, setOpenApptModal] = useState(false);
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
@@ -1423,6 +1430,11 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
       return "Only pending or confirmed appointments can be rescheduled.";
     }
 
+    const rescheduleCount = Number((appt as any).rescheduleCount || 0);
+    if (rescheduleCount >= 1) {
+      return "This appointment has already been rescheduled once.";
+    }
+
     const dt = getAppointmentDateTimeLocal(appt);
     if (!dt) return null;
 
@@ -1504,15 +1516,21 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     return (
       <div className="min-h-[70vh] flex items-center justify-center px-4">
         <div className="max-w-md w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm text-center">
-          <h2 className="text-xl font-extrabold text-slate-900">Please sign in</h2>
-          <p className="mt-2 text-sm text-slate-600">You need an account to access your dashboard.</p>
-          <Link
-            href="/"
+          <h2 className="text-xl font-extrabold text-slate-900">Redirecting...</h2>
+          <p className="mt-2 text-sm text-slate-600">Taking you back to the home page.</p>
+          <button
+            type="button"
+            onClick={() => {
+              router.replace("/");
+              if (typeof window !== "undefined") {
+                window.location.href = "/";
+              }
+            }}
             className="mt-5 inline-flex w-full justify-center rounded-xl px-5 py-3 text-sm font-semibold text-white hover:opacity-95"
             style={{ backgroundColor: BRAND }}
           >
             Go to Home
-          </Link>
+          </button>
         </div>
       </div>
     );

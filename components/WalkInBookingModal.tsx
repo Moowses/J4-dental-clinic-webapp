@@ -69,14 +69,18 @@ function buildMonthGrid(viewDate: Date) {
   return cells;
 }
 
-function isPastSlotForSelectedDate(selectedISO: string, timeHHMM: string) {
+function isPastSlotForSelectedDate(
+  selectedISO: string,
+  timeHHMM: string,
+  allowPastDateSelection: boolean = false
+) {
   if (!selectedISO) return false;
 
   const now = new Date();
   const today = startOfDay(now);
   const selected = startOfDay(new Date(selectedISO + "T00:00:00"));
 
-  if (selected.getTime() < today.getTime()) return true;
+  if (selected.getTime() < today.getTime()) return !allowPastDateSelection;
   if (selected.getTime() > today.getTime()) return false;
 
   const [hh, mm] = timeHHMM.split(":").map((x) => parseInt(x, 10));
@@ -499,6 +503,7 @@ export default function WalkInBookingModal({
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const minBookDate = useMemo(() => today, [today]);
+  const allowPastBooking = isStaff;
 
   const [viewDate, setViewDate] = useState<Date>(() => startOfDay(new Date()));
   const [selectedDate, setSelectedDate] = useState<string>("");
@@ -683,9 +688,13 @@ export default function WalkInBookingModal({
 
   const selectedDateObj = selectedDate ? new Date(selectedDate + "T00:00:00") : null;
   const selectedIsPastDate =
-    !!selectedDateObj && startOfDay(selectedDateObj).getTime() < minBookDate.getTime();
+    !allowPastBooking &&
+    !!selectedDateObj &&
+    startOfDay(selectedDateObj).getTime() < minBookDate.getTime();
   const selectedTimeIsPastForToday =
-    !!selectedDate && !!selectedTime && isPastSlotForSelectedDate(selectedDate, selectedTime);
+    !!selectedDate &&
+    !!selectedTime &&
+    isPastSlotForSelectedDate(selectedDate, selectedTime, allowPastBooking);
 
   const patientReady = !isStaff || !!selectedPatient;
 
@@ -710,7 +719,9 @@ export default function WalkInBookingModal({
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">Walk-In Booking</h3>
             <p className="mt-1 text-xs text-slate-500">
-              Select patient → date → time → service. Past dates and past times are blocked.
+              {isStaff
+                ? "Select patient → date → time → service. Staff can enter previous dates for backlog encoding."
+                : "Select patient → date → time → service. Past dates and past times are blocked."}
             </p>
           </div>
 
@@ -737,7 +748,11 @@ export default function WalkInBookingModal({
 
               <div className="text-center">
                 <p className="text-sm font-extrabold text-slate-900">{monthLabel(viewDate)}</p>
-                <p className="text-xs text-slate-500">Today is allowed (past time slots disabled)</p>
+                <p className="text-xs text-slate-500">
+                  {isStaff
+                    ? "Staff can navigate previous months and encode old walk-in visits."
+                    : "Today is allowed (past time slots disabled)"}
+                </p>
               </div>
 
               <button
@@ -760,7 +775,7 @@ export default function WalkInBookingModal({
             <div className="mt-2 grid grid-cols-7 gap-2">
               {gridCells.map(({ date, inMonth }, idx) => {
                 const d0 = startOfDay(date);
-                const isTooEarly = d0.getTime() < minBookDate.getTime();
+                const isTooEarly = !allowPastBooking && d0.getTime() < minBookDate.getTime();
                 const isToday = isSameDay(d0, today);
                 const isSelected = selectedDateObj ? isSameDay(d0, selectedDateObj) : false;
 
@@ -818,7 +833,7 @@ export default function WalkInBookingModal({
                 <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {TIME_SLOTS.map((t) => {
                     const booked = taken.has(t);
-                    const past = isPastSlotForSelectedDate(selectedDate, t);
+                    const past = isPastSlotForSelectedDate(selectedDate, t, allowPastBooking);
                     const disabled = booked || past;
 
                     return (
@@ -854,14 +869,18 @@ export default function WalkInBookingModal({
 
                 if (selectedDate) {
                   const sel = startOfDay(new Date(selectedDate + "T00:00:00"));
-                  if (sel.getTime() < minBookDate.getTime()) {
+                  if (!allowPastBooking && sel.getTime() < minBookDate.getTime()) {
                     e.preventDefault();
                     setClientError("Past dates cannot be booked.");
                     return;
                   }
                 }
 
-                if (selectedDate && selectedTime && isPastSlotForSelectedDate(selectedDate, selectedTime)) {
+                if (
+                  selectedDate &&
+                  selectedTime &&
+                  isPastSlotForSelectedDate(selectedDate, selectedTime, allowPastBooking)
+                ) {
                   e.preventDefault();
                   setClientError("That time slot is already in the past. Please choose a later slot.");
                   return;
@@ -1028,7 +1047,9 @@ export default function WalkInBookingModal({
               </div>
 
               <p className="text-xs text-slate-500">
-                Flow: Select patient → date → time → service. Past dates and past time slots are blocked.
+                {isStaff
+                  ? "Flow: Select patient → date → time → service. Staff can encode previous days, weeks, and months."
+                  : "Flow: Select patient → date → time → service. Past dates and past time slots are blocked."}
               </p>
             </form>
           </div>

@@ -160,10 +160,7 @@ export async function staffBookAppointmentAction(prevState: any, data: FormData)
   }
 
   return actionWrapper(staffBookingSchema, async (parsed) => {
-    // Business rules
-    const dateError = validateAppointmentDate(parsed.date);
-    if (dateError) throw new Error(dateError);
-
+    // Staff can backfill historical walk-in bookings, so only time format is enforced here.
     const timeError = validateAppointmentTime(parsed.time);
     if (timeError) throw new Error(timeError);
 
@@ -534,10 +531,14 @@ export async function rescheduleAppointmentAction(
     const dentistId = (currentAppt.data as any).dentistId;
     const serviceName = String((currentAppt.data as any).serviceType || "Dental Service");
     const currentStatus = String((currentAppt.data as any).status || "").toLowerCase();
+    const rescheduleCount = Number((currentAppt.data as any).rescheduleCount || 0);
     const normalizedRescheduleReason = String(rescheduleReason || "").trim();
 
     if (currentStatus !== "pending" && currentStatus !== "confirmed") {
       return { success: false, error: "Only pending or confirmed appointments can be rescheduled." };
+    }
+    if (rescheduleCount >= 1) {
+      return { success: false, error: "This appointment has already been rescheduled once." };
     }
     if (currentStatus === "confirmed" && !normalizedRescheduleReason) {
       return {

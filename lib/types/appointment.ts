@@ -50,6 +50,9 @@ export interface Appointment {
   paymentStatus: PaymentStatus;
   paymentMethod?: PaymentMethod;
   paymentDate?: Timestamp;
+  rescheduleCount?: number;
+  rescheduledAt?: Timestamp;
+  rescheduleReason?: string;
   
   createdAt: Timestamp;
 }

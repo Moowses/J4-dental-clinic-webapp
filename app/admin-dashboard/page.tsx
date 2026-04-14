@@ -796,7 +796,18 @@ export default function AdminDashboardPage() {
             )}
             {tab === "procedures" && isAdmin && <ProceduresPanel />}
 
-            <div className="text-center text-xs text-slate-400 py-6">
+            <div className="py-6 text-center text-slate-400" style={{ fontSize: 0 }}>
+              <p className="mb-1 text-xs">J4 Dental Clinic • Staff Dashboard</p>
+              <p className="mb-1">J4 Dental Clinic • Staff Dashboard</p>
+              <p className="mb-1 text-xs">
+                Support:{" "}
+                <a
+                  href="mailto:info@karlmosses.com"
+                  className="font-semibold text-slate-500 hover:text-slate-700"
+                >
+                  info@karlmosses.com
+                </a>
+              </p>
               J4 Dental Clinic • Staff Dashboard
             </div>
           </main>
