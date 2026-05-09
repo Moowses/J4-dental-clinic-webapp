@@ -55,3 +55,37 @@ export async function getPatientListAction(): Promise<{
 
   return await getAllPatients(100); // Fetch top 100 for directory
 }
+
+export async function deletePatientAction(
+  uid: string
+): Promise<{ success: boolean; error?: string; summary?: any }> {
+  const { auth } = await import("@/lib/firebase/firebase");
+  if (!auth.currentUser) return { success: false, error: "Not authenticated" };
+
+  const profile = await getUserProfile(auth.currentUser.uid);
+  if (!profile.success || !profile.data || profile.data.role !== "admin") {
+    return { success: false, error: "Unauthorized: Admin access required" };
+  }
+
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/admin/delete-patient", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken, patientUid: uid }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      return {
+        success: false,
+        error: String(data?.error || "Failed to delete patient"),
+      };
+    }
+
+    return { success: true, summary: data.summary };
+  } catch (error) {
+    console.error("deletePatientAction error:", error);
+    return { success: false, error: "Failed to delete patient" };
+  }
+}

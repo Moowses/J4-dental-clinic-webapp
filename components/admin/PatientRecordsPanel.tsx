@@ -2,7 +2,11 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
-import { getPatientListAction, submitPatientRegistrationAction } from "@/app/actions/patient-actions";
+import {
+  deletePatientAction,
+  getPatientListAction,
+  submitPatientRegistrationAction,
+} from "@/app/actions/patient-actions";
 import { getPatientRecord } from "@/lib/services/patient-service";
 import { getUserProfile, searchPatients } from "@/lib/services/user-service";
 import {
@@ -10,6 +14,7 @@ import {
   ProcessingModal,
   ResultModal,
 } from "@/components/admin/ActionFeedbackModals";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 import type { UserProfile } from "@/lib/types/user";
 
@@ -1083,6 +1088,7 @@ export function PatientEditModal({
 
 
 export default function PatientRecordsPanel() {
+  const { role } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [filter, setFilter] = useState<"all" | "registered" | "unregistered">("registered");
@@ -1095,10 +1101,20 @@ export default function PatientRecordsPanel() {
 
   const [viewingUid, setViewingUid] = useState<string | null>(null);
   const [editingUid, setEditingUid] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<null | {
+    uid: string;
+    name: string;
+  }>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteResult, setDeleteResult] = useState<null | {
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  }>(null);
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
-  useEffect(() => {
+  const refreshDirectory = React.useCallback(() => {
     setDirLoading(true);
     getPatientListAction().then((res: any) => {
       if (res?.success) {
@@ -1120,6 +1136,10 @@ export default function PatientRecordsPanel() {
       setDirLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    refreshDirectory();
+  }, [refreshDirectory]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -1170,9 +1190,67 @@ export default function PatientRecordsPanel() {
     return tableRows.slice(start, start + pageSize);
   }, [tableRows, currentPage]);
 
+  async function confirmDeletePatient() {
+    if (!deleteTarget) return;
+
+    setDeleteLoading(true);
+    const target = deleteTarget;
+    setDeleteTarget(null);
+
+    try {
+      const res = await deletePatientAction(target.uid);
+      if (!res?.success) throw new Error(res?.error || "Failed to delete patient");
+
+      if (viewingUid === target.uid) setViewingUid(null);
+      if (editingUid === target.uid) setEditingUid(null);
+
+      await refreshDirectory();
+      setDeleteResult({
+        tone: "success",
+        title: "Success",
+        message: "Patient record and all linked patient data were deleted successfully.",
+      });
+    } catch (error: any) {
+      setDeleteResult({
+        tone: "error",
+        title: "Delete Failed",
+        message: error?.message || "Failed to delete patient",
+      });
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
 
   return (
     <Card title="Patient Search & Records" subtitle="Search, view, and update patient medical history (clinical)">
+      {deleteLoading ? <ProcessingModal title="Processing" message="Deleting patient and linked records..." /> : null}
+      {deleteTarget ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to delete this patient?"
+          details={
+            <div className="space-y-2 text-sm text-slate-600">
+              <p>
+                Patient: <span className="font-bold text-slate-900">{deleteTarget.name}</span>
+              </p>
+              <p>This will also delete linked appointments, billing records, treatment history, attachments, and account data.</p>
+            </div>
+          }
+          confirmLabel="Delete Patient"
+          tone="danger"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDeletePatient}
+        />
+      ) : null}
+      {deleteResult ? (
+        <ResultModal
+          tone={deleteResult.tone}
+          title={deleteResult.title}
+          message={deleteResult.message}
+          onClose={() => setDeleteResult(null)}
+        />
+      ) : null}
       <div className="space-y-3">
         <div className="relative">
           <input
@@ -1280,6 +1358,19 @@ export default function PatientRecordsPanel() {
                               >
                                 Edit
                               </button>
+                              {role === "admin" ? (
+                                <button
+                                  onClick={() =>
+                                    setDeleteTarget({
+                                      uid: u.uid,
+                                      name: u.displayName || u.email || "Unknown Patient",
+                                    })
+                                  }
+                                  className="px-3 py-2 rounded-xl bg-rose-600 text-white font-extrabold text-xs hover:bg-rose-700"
+                                >
+                                  Delete
+                                </button>
+                              ) : null}
                         </div>
                       </td>
                     </tr>

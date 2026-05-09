@@ -141,6 +141,7 @@ export async function bookAppointmentAction(
 
 const staffBookingSchema = bookingSchema.extend({
   patientId: z.string().min(1, "Please select a patient"),
+  dentistId: z.string().optional(),
 });
 
 export async function staffBookAppointmentAction(prevState: any, data: FormData) {
@@ -186,6 +187,13 @@ export async function staffBookAppointmentAction(prevState: any, data: FormData)
 
     if (!result.success || !result.id) {
       throw new Error(result.error || "Failed to create appointment");
+    }
+
+    if (parsed.dentistId && String(parsed.dentistId).trim()) {
+      const assignRes = await assignDentist(result.id, String(parsed.dentistId).trim());
+      if (!assignRes.success) {
+        throw new Error(assignRes.error || "Appointment booked, but failed to assign dentist");
+      }
     }
 
     try {

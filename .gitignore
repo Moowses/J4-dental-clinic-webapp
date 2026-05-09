@@ -50,3 +50,8 @@ Capstone_Dental_Clinic_Contract_Legal_Notarized_v2.pdf
 agent.md
 Architecture.md
 .github/copilot-instructions.md
+docs/chatbot-database-process.md
+docs/firestore-erd.drawio
+docs/firestore-full-chatbot-erd-lucidchart.sql
+docs/firestore-full-chatbot-erd.drawio
+scripts/generate-firestore-erd-png.ps1

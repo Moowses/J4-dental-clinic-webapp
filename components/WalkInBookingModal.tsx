@@ -9,6 +9,7 @@ import {
   CalendarAvailability,
   getAvailabilityAction,
 } from "@/app/actions/appointment-actions";
+import { getDentistListAction } from "@/app/actions/dentist-actions";
 import {
   autoSendPatientPasswordSetupIfVerifiedAction,
   createPatientAccountByStaffAction,
@@ -22,9 +23,13 @@ import type { DentalProcedure } from "@/lib/types/clinic";
 import { getUserProfile, searchPatients } from "@/lib/services/user-service";
 import type { UserProfile } from "@/lib/types/user";
 import { PatientEditModal } from "@/components/admin/PatientRecordsPanel";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+  ResultModal,
+} from "@/components/admin/ActionFeedbackModals";
 
 const BRAND = "#0E4B5A";
-const PROCEED_PROMPT = "Are you sure to proceed?";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TIME_SLOTS = ["08:00", "09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"];
 
@@ -146,6 +151,14 @@ type TakenAccountInfo = {
   uid: string;
   email: string;
   emailVerified?: boolean;
+};
+
+type BookingSummary = {
+  patientName: string;
+  date: string;
+  time: string;
+  serviceType: string;
+  dentistName: string;
 };
 
 function CreatePatientAccountModal({
@@ -532,6 +545,22 @@ export default function WalkInBookingModal({
   const [procedures, setProcedures] = useState<DentalProcedure[]>([]);
   const [procLoading, setProcLoading] = useState(false);
   const [procError, setProcError] = useState("");
+  const [dentists, setDentists] = useState<UserProfile[]>([]);
+  const [dentistsLoading, setDentistsLoading] = useState(false);
+  const [dentistsError, setDentistsError] = useState("");
+  const [selectedDentistId, setSelectedDentistId] = useState("");
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const allowSubmitRef = useRef(false);
+  const pendingRequestRef = useRef(false);
+  const processingStartedAtRef = useRef<number | null>(null);
+  const [showBookingConfirm, setShowBookingConfirm] = useState(false);
+  const [processingBooking, setProcessingBooking] = useState(false);
+  const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
+  const [bookingResult, setBookingResult] = useState<null | {
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  }>(null);
 
   // Load availability
   useEffect(() => {
@@ -584,6 +613,35 @@ export default function WalkInBookingModal({
       cancelled = true;
     };
   }, [open, procedures.length]);
+
+  useEffect(() => {
+    if (!open || !isStaff) return;
+    if (dentists.length > 0) return;
+
+    let cancelled = false;
+    setDentistsLoading(true);
+    setDentistsError("");
+
+    getDentistListAction()
+      .then((res: any) => {
+        if (cancelled) return;
+        if (res?.success && Array.isArray(res.data)) {
+          setDentists(res.data as UserProfile[]);
+        } else {
+          setDentistsError(res?.error || "Failed to load dentists");
+        }
+      })
+      .catch((error: any) => {
+        if (!cancelled) setDentistsError(error?.message || "Failed to load dentists");
+      })
+      .finally(() => {
+        if (!cancelled) setDentistsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isStaff, dentists.length]);
 
   useEffect(() => {
     let active = true;
@@ -645,6 +703,14 @@ export default function WalkInBookingModal({
       setPatientOpen(false);
       setSelectedPatient(null);
       setCreatePatientOpen(false);
+      setSelectedDentistId("");
+      setShowBookingConfirm(false);
+      setProcessingBooking(false);
+      setBookingSummary(null);
+      setBookingResult(null);
+      allowSubmitRef.current = false;
+      pendingRequestRef.current = false;
+      processingStartedAtRef.current = null;
 
       setFullName("");
       return;
@@ -652,6 +718,14 @@ export default function WalkInBookingModal({
 
     successHandledRef.current = false;
     setClientError("");
+    setSelectedDentistId("");
+    setShowBookingConfirm(false);
+    setProcessingBooking(false);
+    setBookingSummary(null);
+    setBookingResult(null);
+    allowSubmitRef.current = false;
+    pendingRequestRef.current = false;
+    processingStartedAtRef.current = null;
 
     // ✅ IMPORTANT: in staff mode, DO NOT auto-fill from logged-in user
     if (isStaff) {
@@ -669,20 +743,47 @@ export default function WalkInBookingModal({
     setFullName(selectedPatient.displayName || "");
   }, [selectedPatient, isStaff]);
 
-  // Handle success
   useEffect(() => {
-    if (!state.success) return;
+    if (isPending) {
+      processingStartedAtRef.current = Date.now();
+      setProcessingBooking(true);
+    }
+  }, [isPending]);
+
+  // Handle booking result
+  useEffect(() => {
+    if (!pendingRequestRef.current || isPending) return;
+    if (!state.success && !(state as any).error) return;
     if (successHandledRef.current) return;
 
     successHandledRef.current = true;
 
-    try {
-      onBooked();
-    } catch {}
+    const finish = () => {
+      setProcessingBooking(false);
+      setBookingResult(
+        state.success
+          ? {
+              tone: "success",
+              title: "Booking Successful",
+              message: "The walk-in appointment was booked successfully.",
+            }
+          : {
+              tone: "error",
+              title: "Booking Failed",
+              message: String((state as any).error || "Failed to book appointment."),
+            }
+      );
+      pendingRequestRef.current = false;
+      processingStartedAtRef.current = null;
+    };
 
-    onClose();
-    router.refresh();
-  }, [state.success, onBooked, onClose, router]);
+    const startedAt = processingStartedAtRef.current;
+    const elapsed = startedAt ? Date.now() - startedAt : 0;
+    const delay = Math.max(0, 2000 - elapsed);
+    const timer = window.setTimeout(finish, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [isPending, state]);
 
   if (!open) return null;
 
@@ -712,8 +813,120 @@ export default function WalkInBookingModal({
   const goPrevMonth = () => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
   const goNextMonth = () => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
 
+  function validateBookingForm() {
+    if (isStaff && !selectedPatient) {
+      setClientError("Please select a patient first.");
+      return false;
+    }
+
+    if (selectedDate) {
+      const sel = startOfDay(new Date(selectedDate + "T00:00:00"));
+      if (!allowPastBooking && sel.getTime() < minBookDate.getTime()) {
+        setClientError("Past dates cannot be booked.");
+        return false;
+      }
+    }
+
+    if (
+      selectedDate &&
+      selectedTime &&
+      isPastSlotForSelectedDate(selectedDate, selectedTime, allowPastBooking)
+    ) {
+      setClientError("That time slot is already in the past. Please choose a later slot.");
+      return false;
+    }
+
+    if (!canSubmit) {
+      setClientError("Please complete the booking details first.");
+      return false;
+    }
+
+    return true;
+  }
+
+  function openBookingConfirm() {
+    if (!formRef.current) return;
+    if (!validateBookingForm()) return;
+
+    const formData = new FormData(formRef.current);
+    const assignedDentist = dentists.find((dentist) => dentist.uid === selectedDentistId);
+
+    setClientError("");
+    setBookingSummary({
+      patientName: fullName || selectedPatient?.displayName || user?.displayName || "Patient",
+      date: selectedDate,
+      time: selectedTime,
+      serviceType: String(formData.get("serviceType") || ""),
+      dentistName: assignedDentist?.displayName || assignedDentist?.email || "Unassigned",
+    });
+    setShowBookingConfirm(true);
+  }
+
+  function handleConfirmBooking() {
+    if (!formRef.current) return;
+
+    setShowBookingConfirm(false);
+    setBookingResult(null);
+    successHandledRef.current = false;
+    pendingRequestRef.current = true;
+    allowSubmitRef.current = true;
+    formRef.current.requestSubmit();
+  }
+
+  function handleBookingResultClose() {
+    const tone = bookingResult?.tone;
+    setBookingResult(null);
+
+    if (tone === "success") {
+      try {
+        onBooked();
+      } catch {}
+      onClose();
+      router.refresh();
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4">
+      {processingBooking ? (
+        <ProcessingModal title="Processing" message="Booking walk-in appointment..." />
+      ) : null}
+      {showBookingConfirm && bookingSummary ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to proceed with this walk-in booking?"
+          details={
+            <div className="space-y-2 text-sm text-slate-600">
+              <p>
+                Patient: <span className="font-bold text-slate-900">{bookingSummary.patientName}</span>
+              </p>
+              <p>
+                Schedule:{" "}
+                <span className="font-bold text-slate-900">
+                  {bookingSummary.date} at {formatTime12h(bookingSummary.time)}
+                </span>
+              </p>
+              <p>
+                Service: <span className="font-bold text-slate-900">{bookingSummary.serviceType}</span>
+              </p>
+              <p>
+                Dentist: <span className="font-bold text-slate-900">{bookingSummary.dentistName}</span>
+              </p>
+            </div>
+          }
+          confirmLabel="Proceed Booking"
+          onCancel={() => setShowBookingConfirm(false)}
+          onConfirm={handleConfirmBooking}
+        />
+      ) : null}
+      {bookingResult ? (
+        <ResultModal
+          tone={bookingResult.tone}
+          title={bookingResult.title}
+          message={bookingResult.message}
+          onClose={handleBookingResultClose}
+        />
+      ) : null}
       <div className="w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
           <div>
@@ -858,43 +1071,24 @@ export default function WalkInBookingModal({
           {/* Right: Patient + details */}
           <div className="p-6">
             <form
+              ref={formRef}
               action={formAction}
               className="space-y-4"
               onSubmit={(e) => {
-                if (isStaff && !selectedPatient) {
-                  e.preventDefault();
-                  setClientError("Please select a patient first.");
+                if (allowSubmitRef.current) {
+                  allowSubmitRef.current = false;
                   return;
                 }
 
-                if (selectedDate) {
-                  const sel = startOfDay(new Date(selectedDate + "T00:00:00"));
-                  if (!allowPastBooking && sel.getTime() < minBookDate.getTime()) {
-                    e.preventDefault();
-                    setClientError("Past dates cannot be booked.");
-                    return;
-                  }
-                }
-
-                if (
-                  selectedDate &&
-                  selectedTime &&
-                  isPastSlotForSelectedDate(selectedDate, selectedTime, allowPastBooking)
-                ) {
-                  e.preventDefault();
-                  setClientError("That time slot is already in the past. Please choose a later slot.");
-                  return;
-                }
-
-                if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) {
-                  e.preventDefault();
-                }
+                e.preventDefault();
+                openBookingConfirm();
               }}
             >
               <input type="hidden" name="date" value={selectedDate} />
               <input type="hidden" name="time" value={selectedTime} />
               <input type="hidden" name="displayName" value={fullName} />
               <input type="hidden" name="patientId" value={selectedPatient?.uid || ""} />
+              <input type="hidden" name="dentistId" value={selectedDentistId} />
 
               {/* Staff patient search */}
               {isStaff ? (
@@ -993,6 +1187,36 @@ export default function WalkInBookingModal({
                   />
                 </div>
               )}
+
+              {isStaff ? (
+                <div>
+                  <label className="text-xs font-bold text-slate-600">Assign Dentist</label>
+                  <select
+                    value={selectedDentistId}
+                    onChange={(e) => setSelectedDentistId(e.target.value)}
+                    disabled={dentistsLoading}
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-300 disabled:bg-slate-50 disabled:text-slate-500"
+                  >
+                    <option value="">
+                      {dentistsLoading ? "Loading dentists..." : "Leave unassigned"}
+                    </option>
+                    {dentists.map((dentist) => (
+                      <option key={dentist.uid} value={dentist.uid}>
+                        {dentist.displayName || dentist.email || "Unnamed Dentist"}
+                      </option>
+                    ))}
+                  </select>
+                  {dentistsError ? (
+                    <p className="mt-2 text-xs font-semibold text-amber-700">
+                      {dentistsError}. You can still continue without assigning a dentist.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Optional. If left blank, this walk-in booking will stay in the unassigned tab.
+                    </p>
+                  )}
+                </div>
+              ) : null}
 
               <div>
                 <label className="text-xs font-bold text-slate-600">Service Type</label>
