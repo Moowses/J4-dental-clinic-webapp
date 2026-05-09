@@ -11,6 +11,11 @@ import {
   selectiveResetClinicDataAction,
   syncPatientIdCounterAction,
 } from "@/app/actions/patient-admin-actions";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+  ResultModal,
+} from "@/components/admin/ActionFeedbackModals";
 import { useAuth } from "@/lib/hooks/useAuth";
 import type { ClinicSettings } from "@/lib/types/clinic";
 
@@ -30,7 +35,6 @@ const DAY_ORDER = [
   "sunday",
 ] as const;
 type DayKey = (typeof DAY_ORDER)[number];
-const PROCEED_PROMPT = "Are you sure to proceed?";
 const RESET_CONFIRMATION_TEXT = "DELETE SELECTED DATA";
 
 type ResetSelection = {
@@ -95,6 +99,12 @@ export default function ClinicSettings() {
   const [banner, setBanner] = useState<{ type: "ok" | "err"; msg: string } | null>(
     null
   );
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  const [saveResult, setSaveResult] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
   const [syncingCounter, setSyncingCounter] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ type: "ok" | "err"; msg: string } | null>(
     null
@@ -227,25 +237,35 @@ export default function ClinicSettings() {
     });
   };
 
-  const handleSave = async () => {
+  const executeSave = async () => {
     if (!settings) return;
-    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
     setIsSaving(true);
     setBanner(null);
 
     try {
       const res = await updateClinicSettingsAction(settings);
       if (res?.success) {
-        setBanner({ type: "ok", msg: "Clinic settings updated successfully." });
+        const message = "Clinic settings updated successfully.";
+        setBanner({ type: "ok", msg: message });
+        setSaveResult({ tone: "success", title: "Success", message });
       } else {
-        setBanner({ type: "err", msg: res?.error || "Failed to update clinic settings." });
+        const message = res?.error || "Failed to update clinic settings.";
+        setBanner({ type: "err", msg: message });
+        setSaveResult({ tone: "error", title: "Save Failed", message });
       }
     } catch (e) {
       console.error(e);
-      setBanner({ type: "err", msg: "Failed to update clinic settings." });
+      const message = "Failed to update clinic settings.";
+      setBanner({ type: "err", msg: message });
+      setSaveResult({ tone: "error", title: "Save Failed", message });
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    if (!settings) return;
+    setConfirmSaveOpen(true);
   };
 
   const handleSyncCounter = async () => {
@@ -380,6 +400,27 @@ export default function ClinicSettings() {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+      {isSaving ? <ProcessingModal title="Processing" message="Saving clinic settings..." /> : null}
+      {confirmSaveOpen ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to save these clinic settings?"
+          confirmLabel="Save Changes"
+          onCancel={() => setConfirmSaveOpen(false)}
+          onConfirm={async () => {
+            setConfirmSaveOpen(false);
+            await executeSave();
+          }}
+        />
+      ) : null}
+      {saveResult ? (
+        <ResultModal
+          tone={saveResult.tone}
+          title={saveResult.title}
+          message={saveResult.message}
+          onClose={() => setSaveResult(null)}
+        />
+      ) : null}
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-xl font-extrabold text-slate-900">Clinic Settings</p>

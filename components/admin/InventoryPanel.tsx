@@ -9,6 +9,11 @@ import {
   updateInventoryItemAction,
   deleteInventoryItemAction,
 } from "@/app/actions/inventory-actions";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+  ResultModal,
+} from "@/components/admin/ActionFeedbackModals";
 import { getInventory } from "@/lib/services/inventory-service";
 
 import type { InventoryItem } from "@/lib/types/inventory";
@@ -104,6 +109,13 @@ export default function InventoryPanel() {
   const [openEdit, setOpenEdit] = useState<InventoryItem | null>(null);
   const [adjustingStock, setAdjustingStock] = useState<{ item: InventoryItem; mode: "in" | "out" } | null>(null);
   const [customQty, setCustomQty] = useState("");
+  const [processingMessage, setProcessingMessage] = useState<string | null>(null);
+  const [resultModal, setResultModal] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
+  const [pendingEditForm, setPendingEditForm] = useState<FormData | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -145,15 +157,27 @@ export default function InventoryPanel() {
     if (!adjustingStock || amount <= 0) return;
     
     const finalAmount = adjustingStock.mode === "in" ? amount : -amount;
+    const actionLabel = adjustingStock.mode === "in" ? "stock in" : "stock out";
     
     startTransition(async () => {
+      setProcessingMessage(`Saving ${actionLabel} adjustment...`);
       const res = await adjustStockAction(adjustingStock.item.id, finalAmount);
+      setProcessingMessage(null);
       if (!res.success) {
-        alert(res.error || "Failed to adjust stock");
+        setResultModal({
+          tone: "error",
+          title: "Update Failed",
+          message: res.error || "Failed to adjust stock",
+        });
         return;
       }
       setAdjustingStock(null);
       setCustomQty("");
+      setResultModal({
+        tone: "success",
+        title: "Success",
+        message: "Inventory stock updated successfully.",
+      });
       await refresh();
     });
   }
@@ -165,7 +189,11 @@ export default function InventoryPanel() {
     startTransition(async () => {
       const res = await deleteInventoryItemAction(item.id);
       if (!res.success) {
-        alert(res.error || "Failed to deactivate item");
+        setResultModal({
+          tone: "error",
+          title: "Deactivate Failed",
+          message: res.error || "Failed to deactivate item",
+        });
         return;
       }
       await refresh();
@@ -177,20 +205,54 @@ export default function InventoryPanel() {
     if (!openEdit) return;
 
     const fd = new FormData(e.currentTarget);
+    setPendingEditForm(fd);
+  }
 
+  async function confirmEditSave() {
+    if (!openEdit || !pendingEditForm) return;
     startTransition(async () => {
-      const res = await updateInventoryItemAction(openEdit.id, fd);
+      setProcessingMessage("Saving inventory changes...");
+      const res = await updateInventoryItemAction(openEdit.id, pendingEditForm);
+      setProcessingMessage(null);
+      setPendingEditForm(null);
       if (!res.success) {
-        alert(res.error || "Failed to update item");
+        setResultModal({
+          tone: "error",
+          title: "Save Failed",
+          message: res.error || "Failed to update item",
+        });
         return;
       }
       setOpenEdit(null);
+      setResultModal({
+        tone: "success",
+        title: "Success",
+        message: "Inventory item updated successfully.",
+      });
       await refresh();
     });
   }
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col w-full">
+      {processingMessage ? <ProcessingModal title="Processing" message={processingMessage} /> : null}
+      {pendingEditForm ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to save these inventory changes?"
+          confirmLabel="Save Changes"
+          onCancel={() => setPendingEditForm(null)}
+          onConfirm={confirmEditSave}
+        />
+      ) : null}
+      {resultModal ? (
+        <ResultModal
+          tone={resultModal.tone}
+          title={resultModal.title}
+          message={resultModal.message}
+          onClose={() => setResultModal(null)}
+        />
+      ) : null}
       <div className="px-6 py-4 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-white z-10">
         <div>
           <h3 className="text-lg font-extrabold text-slate-900">Inventory</h3>

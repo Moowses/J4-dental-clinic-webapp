@@ -4,10 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { updateUserDocument } from "@/lib/services/user-service";
 import { updateUserProfile } from "@/lib/services/auth-service";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+  ResultModal,
+} from "@/components/admin/ActionFeedbackModals";
 
 const CROP_PREVIEW_SIZE = 220;
 const OUTPUT_SIZE = 512;
-const PROCEED_PROMPT = "Are you sure to proceed?";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -30,6 +34,12 @@ export default function StaffAccountSettingsPanel() {
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  const [resultModal, setResultModal] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(user?.photoURL || null);
   const [photoSrc, setPhotoSrc] = useState<string | null>(null);
@@ -174,9 +184,8 @@ export default function StaffAccountSettingsPanel() {
     }
   };
 
-  const handleSaveName = async () => {
+  const executeSaveName = async () => {
     if (!user) return;
-    if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) return;
     const nextName = displayName.trim();
     if (nextName.length < 2) {
       setStatus("Name must be at least 2 characters.");
@@ -189,15 +198,57 @@ export default function StaffAccountSettingsPanel() {
       await updateUserDocument(user.uid, { displayName: nextName });
       await updateUserProfile(user, { displayName: nextName, photoURL: user.photoURL || "" });
       setStatus("Saved.");
+      setResultModal({
+        tone: "success",
+        title: "Success",
+        message: "Account settings updated successfully.",
+      });
     } catch (err: any) {
-      setStatus(err?.message || "Failed to save.");
+      const message = err?.message || "Failed to save.";
+      setStatus(message);
+      setResultModal({
+        tone: "error",
+        title: "Save Failed",
+        message,
+      });
     } finally {
       setSaving(false);
     }
   };
 
+  const handleSaveName = async () => {
+    if (!user) return;
+    const nextName = displayName.trim();
+    if (nextName.length < 2) {
+      setStatus("Name must be at least 2 characters.");
+      return;
+    }
+    setConfirmSaveOpen(true);
+  };
+
   return (
     <div className="space-y-6">
+      {saving ? <ProcessingModal title="Processing" message="Saving account settings..." /> : null}
+      {confirmSaveOpen ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to save these account changes?"
+          confirmLabel="Save Changes"
+          onCancel={() => setConfirmSaveOpen(false)}
+          onConfirm={async () => {
+            setConfirmSaveOpen(false);
+            await executeSaveName();
+          }}
+        />
+      ) : null}
+      {resultModal ? (
+        <ResultModal
+          tone={resultModal.tone}
+          title={resultModal.title}
+          message={resultModal.message}
+          onClose={() => setResultModal(null)}
+        />
+      ) : null}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>

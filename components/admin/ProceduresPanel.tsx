@@ -24,6 +24,11 @@ import {
 import { getAllProcedures } from "@/lib/services/clinic-service";
 import { getInventory } from "@/lib/services/inventory-service";
 import { getDentistProfile } from "@/lib/services/dentist-service";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+  ResultModal,
+} from "@/components/admin/ActionFeedbackModals";
 
 import type { DentalProcedure } from "@/lib/types/clinic";
 import type { DentalService } from "@/lib/types/service";
@@ -138,6 +143,13 @@ function ProceduresBlueprintsSection() {
   >([]);
 
   const [editingProc, setEditingProc] = useState<DentalProcedure | null>(null);
+  const [pendingUpdateForm, setPendingUpdateForm] = useState<FormData | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [resultModal, setResultModal] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
 
   const [createState, createAction, creating] = useActionState(
     createProcedureAction,
@@ -216,14 +228,29 @@ function ProceduresBlueprintsSection() {
 
     const formData = new FormData(e.currentTarget);
     formData.set("requiredInventory", requiredInventoryJson);
+    setPendingUpdateForm(formData);
+  };
 
-    const res = await updateProcedureAction((editingProc as any).id, formData);
+  const confirmProcedureUpdate = async () => {
+    if (!editingProc || !pendingUpdateForm) return;
+    setProcessing(true);
+    const res = await updateProcedureAction((editingProc as any).id, pendingUpdateForm);
+    setProcessing(false);
+    setPendingUpdateForm(null);
     if (res?.success) {
-      alert("Procedure updated!");
       cancelEdit();
+      setResultModal({
+        tone: "success",
+        title: "Success",
+        message: "Procedure updated successfully.",
+      });
       fetchProcedures();
     } else {
-      alert("Error: " + (res?.error || "Unknown error"));
+      setResultModal({
+        tone: "error",
+        title: "Update Failed",
+        message: res?.error || "Unknown error",
+      });
     }
   };
 
@@ -243,6 +270,24 @@ function ProceduresBlueprintsSection() {
 
   return (
     <div className="space-y-4">
+      {processing ? <ProcessingModal title="Processing" message="Saving procedure changes..." /> : null}
+      {pendingUpdateForm ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to save these procedure changes?"
+          confirmLabel="Update Procedure"
+          onCancel={() => setPendingUpdateForm(null)}
+          onConfirm={confirmProcedureUpdate}
+        />
+      ) : null}
+      {resultModal ? (
+        <ResultModal
+          tone={resultModal.tone}
+          title={resultModal.title}
+          message={resultModal.message}
+          onClose={() => setResultModal(null)}
+        />
+      ) : null}
       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
         <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
           {procedures.length === 0 ? (
@@ -504,6 +549,13 @@ function ServiceCatalogSection() {
   const [editingService, setEditingService] = useState<DentalService | null>(null);
   const [imageUrl, setImageUrl] = useState<string>("");
   const [uploading, setUploading] = useState(false);
+  const [pendingUpdateForm, setPendingUpdateForm] = useState<FormData | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [resultModal, setResultModal] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
 
   const [createState, createAction, creating] = useActionState(createServiceAction, {
     success: false,
@@ -533,15 +585,30 @@ function ServiceCatalogSection() {
 
     const formData = new FormData(e.currentTarget);
     formData.set("imageUrl", imageUrl);
-    const res = await updateServiceAction(editingService.id, formData);
+    setPendingUpdateForm(formData);
+  };
 
+  const confirmServiceUpdate = async () => {
+    if (!editingService || !pendingUpdateForm) return;
+    setProcessing(true);
+    const res = await updateServiceAction(editingService.id, pendingUpdateForm);
+    setProcessing(false);
+    setPendingUpdateForm(null);
     if (res?.success) {
-      alert("Service updated!");
       setEditingService(null);
       setImageUrl("");
+      setResultModal({
+        tone: "success",
+        title: "Success",
+        message: "Service updated successfully.",
+      });
       fetchServices();
     } else {
-      alert("Error: " + (res?.error || "Unknown error"));
+      setResultModal({
+        tone: "error",
+        title: "Update Failed",
+        message: res?.error || "Unknown error",
+      });
     }
   };
 
@@ -555,7 +622,11 @@ function ServiceCatalogSection() {
     const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
     const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
     if (!cloudName || !uploadPreset) {
-      alert("Cloudinary configuration missing.");
+      setResultModal({
+        tone: "error",
+        title: "Upload Failed",
+        message: "Cloudinary configuration missing.",
+      });
       return;
     }
 
@@ -576,7 +647,11 @@ function ServiceCatalogSection() {
         throw new Error(data?.error?.message || "Upload failed");
       }
     } catch (err: any) {
-      alert("Error uploading image: " + err.message);
+      setResultModal({
+        tone: "error",
+        title: "Upload Failed",
+        message: "Error uploading image: " + err.message,
+      });
     } finally {
       setUploading(false);
     }
@@ -584,6 +659,24 @@ function ServiceCatalogSection() {
 
   return (
     <div className="space-y-4">
+      {processing ? <ProcessingModal title="Processing" message="Saving service changes..." /> : null}
+      {pendingUpdateForm ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to save these service changes?"
+          confirmLabel="Update Service"
+          onCancel={() => setPendingUpdateForm(null)}
+          onConfirm={confirmServiceUpdate}
+        />
+      ) : null}
+      {resultModal ? (
+        <ResultModal
+          tone={resultModal.tone}
+          title={resultModal.title}
+          message={resultModal.message}
+          onClose={() => setResultModal(null)}
+        />
+      ) : null}
       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
         <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
           {services.length === 0 ? (
@@ -781,6 +874,12 @@ function DentistServiceManager() {
   const [supportedIds, setSupportedIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  const [resultModal, setResultModal] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -820,18 +919,55 @@ function DentistServiceManager() {
     );
   };
 
-  const handleSave = async () => {
+  const executeSave = async () => {
     if (!selectedDentist) return;
     setIsSaving(true);
     const res = await updateDentistServicesAction(selectedDentist, supportedIds);
     setIsSaving(false);
 
-    if (res?.success) alert("Dentist capabilities updated!");
-    else alert("Error: " + (res?.error || "Unknown error"));
+    if (res?.success) {
+      setResultModal({
+        tone: "success",
+        title: "Success",
+        message: "Dentist capabilities updated successfully.",
+      });
+    } else {
+      setResultModal({
+        tone: "error",
+        title: "Save Failed",
+        message: res?.error || "Unknown error",
+      });
+    }
+  };
+
+  const handleSave = async () => {
+    if (!selectedDentist) return;
+    setConfirmSaveOpen(true);
   };
 
   return (
     <div className="space-y-4">
+      {isSaving ? <ProcessingModal title="Processing" message="Saving dentist capabilities..." /> : null}
+      {confirmSaveOpen ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to save these dentist capability changes?"
+          confirmLabel="Save Capabilities"
+          onCancel={() => setConfirmSaveOpen(false)}
+          onConfirm={async () => {
+            setConfirmSaveOpen(false);
+            await executeSave();
+          }}
+        />
+      ) : null}
+      {resultModal ? (
+        <ResultModal
+          tone={resultModal.tone}
+          title={resultModal.title}
+          message={resultModal.message}
+          onClose={() => setResultModal(null)}
+        />
+      ) : null}
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
         <p className="text-sm font-extrabold text-slate-900">Provider Capabilities</p>
         <p className="text-xs text-slate-500">

@@ -48,6 +48,7 @@ type TabKey =
 type ApptTab =
   | "calendar"
   | "upcoming"
+  | "previous"
   | "completed"
   | "cancelled"
   | "no_show"
@@ -56,6 +57,7 @@ type ApptTab =
 const APPT_SUB_ITEMS = [
   { key: "calendar" as const, label: "Calendar" },
   { key: "upcoming" as const, label: "Upcoming" },
+  { key: "previous" as const, label: "Previous Bookings" },
   { key: "completed" as const, label: "Completed" },
   { key: "cancelled" as const, label: "Cancelled" },
   { key: "no_show" as const, label: "No Show" },
@@ -666,7 +668,7 @@ export default function AdminDashboardPage() {
                         Appointments
                       </p>
                       <p className="text-sm text-slate-500">
-                        Calendar, upcoming bookings, completed, cancelled, no show, and unassigned queue.
+                        Calendar, upcoming and previous bookings, completed, cancelled, no show, and unassigned queue.
                       </p>
                     </div>
 
@@ -702,11 +704,12 @@ export default function AdminDashboardPage() {
                 </div>
 
                 {apptTab === "calendar" && <ClinicSchedulePanel />}
-                {apptTab === "upcoming" && <UpcomingAppointmentsPanel view="upcoming" />}
-                {apptTab === "completed" && <UpcomingAppointmentsPanel view="completed" />}
-                {apptTab === "cancelled" && <UpcomingAppointmentsPanel view="cancelled" />}
-                {apptTab === "no_show" && <UpcomingAppointmentsPanel view="no_show" />}
-                {apptTab === "unassigned" && <UnassignedAppointmentsPanel />}
+                {apptTab === "upcoming" && <UpcomingAppointmentsPanel view="upcoming" canDelete={isAdmin} />}
+                {apptTab === "previous" && <UpcomingAppointmentsPanel view="previous" canDelete={isAdmin} />}
+                {apptTab === "completed" && <UpcomingAppointmentsPanel view="completed" canDelete={isAdmin} />}
+                {apptTab === "cancelled" && <UpcomingAppointmentsPanel view="cancelled" canDelete={isAdmin} />}
+                {apptTab === "no_show" && <UpcomingAppointmentsPanel view="no_show" canDelete={isAdmin} />}
+                {apptTab === "unassigned" && <UnassignedAppointmentsPanel canDelete={isAdmin} />}
 
                 {(isAdmin || isFrontDesk) && (
                   <WalkInBookingModal

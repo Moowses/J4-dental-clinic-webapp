@@ -14,6 +14,11 @@ import { formatTime12h } from "@/lib/utils/time";
 import { getUserDisplayNameByUid } from "@/lib/services/user-service";
 import { getPatientRecord } from "@/lib/services/patient-service";
 import { auth } from "@/lib/firebase/firebase";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+  ResultModal,
+} from "@/components/admin/ActionFeedbackModals";
 
 import type { Appointment } from "@/lib/types/appointment";
 import type { DentalProcedure } from "@/lib/types/clinic";
@@ -293,6 +298,12 @@ function DentalChartModal({
   const [notes, setNotes] = useState("");
   const [extracted, setExtracted] = useState(false);
   const [selectedTeeth, setSelectedTeeth] = useState<any[]>([]);
+  const [pendingChartEntry, setPendingChartEntry] = useState<null | {
+    toothNumber: string;
+    status?: string;
+    notes?: string;
+  }>(null);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
   const pendingRef = React.useRef<number | null>(null);
 
   useEffect(() => {
@@ -306,7 +317,6 @@ function DentalChartModal({
   }, [open, chart]);
 
   if (!open) return null;
-  const confirmProceed = () => window.confirm("Are you sure you want to proceed?");
 
   const isExtractedEntry = (entry?: { status?: string; notes?: string }) => {
     const statusValue = String(entry?.status || "").toLowerCase();
@@ -520,21 +530,13 @@ function DentalChartModal({
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                if (!confirmProceed()) return;
                 const key = toothNumber.trim();
                 if (!key) return;
-                const next = {
-                  ...draft,
-                  [key]: {
-                    status: extracted ? "extracted" : status.trim() || undefined,
-                    notes: notes.trim() || undefined,
-                  },
-                };
-                setDraft(next);
-                setToothNumber("");
-                setStatus("");
-                setNotes("");
-                setExtracted(false);
+                setPendingChartEntry({
+                  toothNumber: key,
+                  status: extracted ? "extracted" : status.trim() || undefined,
+                  notes: notes.trim() || undefined,
+                });
               }}
               className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-extrabold hover:bg-black"
             >
@@ -592,9 +594,7 @@ function DentalChartModal({
           <div className="flex flex-col gap-2">
             <button
               onClick={() => {
-                if (!confirmProceed()) return;
-                onSave(draft);
-                onClose();
+                setConfirmSaveOpen(true);
               }}
               className="w-full rounded-xl bg-emerald-700 py-3 text-white font-black hover:bg-emerald-800 transition"
             >
@@ -609,6 +609,42 @@ function DentalChartModal({
           </div>
         </div>
       </div>
+      {pendingChartEntry ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to update this dental chart entry?"
+          confirmLabel="Add / Update"
+          onCancel={() => setPendingChartEntry(null)}
+          onConfirm={() => {
+            const next = {
+              ...draft,
+              [pendingChartEntry.toothNumber]: {
+                status: pendingChartEntry.status,
+                notes: pendingChartEntry.notes,
+              },
+            };
+            setDraft(next);
+            setToothNumber("");
+            setStatus("");
+            setNotes("");
+            setExtracted(false);
+            setPendingChartEntry(null);
+          }}
+        />
+      ) : null}
+      {confirmSaveOpen ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message="Are you sure you want to save this dental chart?"
+          confirmLabel="Save Dental Chart"
+          onCancel={() => setConfirmSaveOpen(false)}
+          onConfirm={() => {
+            setConfirmSaveOpen(false);
+            onSave(draft);
+            onClose();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -655,6 +691,12 @@ function TreatmentModal({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultModal, setResultModal] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+    shouldCloseAfter?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     getTreatmentToolsAction().then((res) => {
@@ -780,10 +822,18 @@ function TreatmentModal({
       });
 
     if (res.success) {
-      onComplete();
-      onClose();
+      setResultModal({
+        tone: "success",
+        title: "Success",
+        message: "Treatment finalized successfully.",
+        shouldCloseAfter: true,
+      });
     } else {
-      alert(res.error);
+      setResultModal({
+        tone: "error",
+        title: "Save Failed",
+        message: res.error || "Failed to finalize treatment.",
+      });
     }
     setIsSaving(false);
   };
@@ -1157,6 +1207,22 @@ function TreatmentModal({
           onClose={() => setChartOpen(false)}
           onSave={(next) => setDentalChart(next)}
         />
+        {isSaving ? <ProcessingModal title="Processing" message="Finalizing treatment..." /> : null}
+        {resultModal ? (
+          <ResultModal
+            tone={resultModal.tone}
+            title={resultModal.title}
+            message={resultModal.message}
+            onClose={() => {
+              const shouldCloseAfter = resultModal.shouldCloseAfter;
+              setResultModal(null);
+              if (shouldCloseAfter) {
+                onComplete();
+                onClose();
+              }
+            }}
+          />
+        ) : null}
         {confirmOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
             <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden">
@@ -1227,7 +1293,6 @@ function TreatmentModal({
               <div className="px-6 py-4 border-t border-slate-200 flex flex-col gap-2">
                 <button
                   onClick={async () => {
-                    if (!window.confirm("Are you sure you want to proceed?")) return;
                     setConfirmOpen(false);
                     await handleSave();
                   }}

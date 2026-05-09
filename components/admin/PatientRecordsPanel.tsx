@@ -5,6 +5,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { getPatientListAction, submitPatientRegistrationAction } from "@/app/actions/patient-actions";
 import { getPatientRecord } from "@/lib/services/patient-service";
 import { getUserProfile, searchPatients } from "@/lib/services/user-service";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+  ResultModal,
+} from "@/components/admin/ActionFeedbackModals";
 
 import type { UserProfile } from "@/lib/types/user";
 
@@ -477,6 +482,13 @@ export function PatientEditModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(() => normalizeReg(null));
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultModal, setResultModal] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+    shouldCloseAfter?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -524,27 +536,46 @@ export function PatientEditModal({
     return errs;
   };
 
+  const executeSave = async () => {
+    const errs = validateRequired();
+    if (errs.length) {
+      setError(errs.join(" "));
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const res = await submitPatientRegistrationAction(patientId, form as any);
+    if (!res?.success) {
+      const message = res?.error || "Failed to update patient record.";
+      setError(message);
+      setResultModal({
+        tone: "error",
+        title: "Save Failed",
+        message,
+      });
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    setResultModal({
+      tone: "success",
+      title: "Success",
+      message: "Patient record updated successfully.",
+      shouldCloseAfter: true,
+    });
+  };
+
   const handleSave = async () => {
     const errs = validateRequired();
     if (errs.length) {
       setError(errs.join(" "));
       return;
     }
-    if (confirmOnSave && typeof window !== "undefined") {
-      const ok = window.confirm(confirmMessage);
-      if (!ok) return;
-    }
-    setSaving(true);
-    setError(null);
-    const res = await submitPatientRegistrationAction(patientId, form as any);
-    if (!res?.success) {
-      setError(res?.error || "Failed to update patient record.");
-      setSaving(false);
+    if (confirmOnSave) {
+      setConfirmOpen(true);
       return;
     }
-    setSaving(false);
-    onSaved?.();
-    onClose();
+    await executeSave();
   };
 
   const p = form.personal_information;
@@ -579,6 +610,34 @@ export function PatientEditModal({
 
   return (
     <div className={inline ? "" : "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"}>
+      {saving ? <ProcessingModal title="Processing" message="Saving patient record..." /> : null}
+      {confirmOpen ? (
+        <ConfirmActionModal
+          title="Confirm action"
+          message={confirmMessage}
+          confirmLabel="Save Changes"
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={async () => {
+            setConfirmOpen(false);
+            await executeSave();
+          }}
+        />
+      ) : null}
+      {resultModal ? (
+        <ResultModal
+          tone={resultModal.tone}
+          title={resultModal.title}
+          message={resultModal.message}
+          onClose={() => {
+            const shouldCloseAfter = resultModal.shouldCloseAfter;
+            setResultModal(null);
+            if (shouldCloseAfter) {
+              onSaved?.();
+              onClose();
+            }
+          }}
+        />
+      ) : null}
       <div className={shellClass}>
         <div className="px-5 py-4 border-b border-slate-100">
           <h3 className={headerTitleClass}>{title}</h3>

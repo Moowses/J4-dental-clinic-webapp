@@ -6,6 +6,7 @@ import {
   where, 
   getDocs,
   getDoc, 
+  deleteDoc,
   serverTimestamp, 
   orderBy,
   doc,
@@ -103,6 +104,28 @@ export async function updateAppointmentStatus(appointmentId: string, status: App
   } catch (error) {
     console.error("Error updating appointment status:", error);
     return { success: false, error: "Failed to update status" };
+  }
+}
+
+export async function deleteAppointment(appointmentId: string) {
+  try {
+    if (!appointmentId) {
+      return { success: false, error: "Missing appointmentId" };
+    }
+
+    const apptRef = doc(db, APPOINTMENTS_COLLECTION, appointmentId);
+    const billingRef = doc(db, "billing_records", appointmentId);
+
+    const apptSnap = await getDoc(apptRef);
+    if (!apptSnap.exists()) {
+      return { success: false, error: "Appointment not found" };
+    }
+
+    await Promise.allSettled([deleteDoc(apptRef), deleteDoc(billingRef)]);
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting appointment:", error);
+    return { success: false, error: "Failed to delete appointment" };
   }
 }
 

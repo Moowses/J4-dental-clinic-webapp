@@ -507,6 +507,38 @@ export async function updateAppointmentStatusAction(
 
   return result;
 }
+
+export async function deleteAppointmentAction(appointmentId: string) {
+  const { auth } = await import("@/lib/firebase/firebase");
+  if (!auth.currentUser) return { success: false, error: "Not authenticated" };
+
+  const profile = await getUserProfile(auth.currentUser.uid);
+  if (!profile.success || !profile.data || profile.data.role !== "admin") {
+    return { success: false, error: "Unauthorized: Admin access required" };
+  }
+
+  try {
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/admin/delete-appointment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken, appointmentId }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      return {
+        success: false,
+        error: String(data?.error || "Failed to delete appointment"),
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("deleteAppointmentAction error:", error);
+    return { success: false, error: "Failed to delete appointment" };
+  }
+}
 ///resceduleAppointmentAction
 
 export async function rescheduleAppointmentAction(

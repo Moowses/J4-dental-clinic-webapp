@@ -33,25 +33,82 @@ type AuthModalProps = {
 const initialActionState: ActionState = { success: false, error: undefined };
 
 function LoadingOverlay({ message }: { message: string }) {
+  const loaderBars = Array.from({ length: 12 });
+
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur">
-      <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-lg">
-        <div className="flex items-center gap-3">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800" />
-          <div className="text-sm font-semibold text-slate-800">{message}</div>
+    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/88 backdrop-blur-sm">
+      <div className="w-[280px] rounded-[28px] border border-sky-100 bg-white px-8 py-7 shadow-[0_24px_60px_rgba(14,75,90,0.16)]">
+        <div className="flex flex-col items-center">
+          <div className="relative h-20 w-20">
+            <div className="absolute inset-0 animate-[spin_1.15s_linear_infinite]">
+              {loaderBars.map((_, index) => {
+                const angle = index * 30;
+                const opacity = 0.18 + index * 0.06;
+                return (
+                  <span
+                    key={index}
+                    className="absolute left-1/2 top-1/2 h-4 w-1.5 -translate-x-1/2 rounded-full bg-[#4d8df7]"
+                    style={{
+                      transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-28px)`,
+                      opacity,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-sky-100 shadow-inner">
+            <div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-[#5da6ff] via-[#2d7ef7] to-[#7bc6ff]" />
+          </div>
+
+          <div className="mt-4 text-center">
+            <div className="text-[15px] font-black uppercase tracking-[0.22em] text-[#3f7ee8]">
+              Please Wait
+            </div>
+            <div className="mt-1 text-xs font-medium text-slate-500">{message}</div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SuccessOverlay() {
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur">
-      <div className="rounded-2xl border border-emerald-200 bg-white px-6 py-5 shadow-lg">
+    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/88 backdrop-blur-sm">
+      <div className="w-[280px] rounded-[28px] border border-emerald-100 bg-white px-8 py-7 shadow-[0_24px_60px_rgba(16,185,129,0.16)]">
         <div className="text-sm font-extrabold text-emerald-700">Success!</div>
         <div className="mt-1 text-sm text-slate-700">
           Redirecting to your dashboard…
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProgressSuccessOverlay() {
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/88 backdrop-blur-sm">
+      <div className="w-[280px] rounded-[28px] border border-emerald-100 bg-white px-8 py-7 shadow-[0_24px_60px_rgba(16,185,129,0.16)]">
+        <div className="flex flex-col items-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full border-[6px] border-emerald-100 bg-emerald-50">
+            <div className="text-3xl font-black text-emerald-600">✓</div>
+          </div>
+
+          <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100 shadow-inner">
+            <div className="h-full w-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500" />
+          </div>
+
+          <div className="mt-4 text-center">
+            <div className="text-[15px] font-black uppercase tracking-[0.22em] text-emerald-600">
+              Success
+            </div>
+            <div className="mt-1 text-xs font-medium text-slate-500">
+              Redirecting to your dashboard...
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -220,7 +277,7 @@ export default function AuthModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
       <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl">
         {busy && <LoadingOverlay message="Processing..." />}
-        {showSuccess && <SuccessOverlay />}
+        {showSuccess && <ProgressSuccessOverlay />}
 
         <div className="flex items-center justify-between border-b px-6 py-4">
           <div className="text-sm font-extrabold text-slate-900">{heading}</div>
