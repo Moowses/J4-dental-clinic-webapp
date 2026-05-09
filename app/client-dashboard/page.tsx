@@ -32,6 +32,7 @@ const BRAND = "#0E4B5A";
 const PROCEED_PROMPT = "Are you sure to proceed?";
 const CROP_PREVIEW_SIZE = 240;
 const OUTPUT_SIZE = 512;
+const FORCE_TREATMENT_HISTORY_DATABASE_ERROR_FOR_DOCS = true;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -879,6 +880,7 @@ function ClientTreatmentHistoryModal({
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [groups, setGroups] = useState<
     Array<{
       appointmentId: string;
@@ -899,12 +901,24 @@ function ClientTreatmentHistoryModal({
     let active = true;
     setLoading(true);
     setGroups([]);
+    setHistoryError(null);
+
+    if (FORCE_TREATMENT_HISTORY_DATABASE_ERROR_FOR_DOCS) {
+      setHistoryError(
+        "Database Error: Treatment history is temporarily unavailable because the patient treatment records query could not retrieve data from the database."
+      );
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
 
     const load = async () => {
       const user = auth.currentUser;
       const token = user ? await user.getIdToken() : null;
       if (!token) {
         if (!active) return;
+        setHistoryError("Database Error: Missing authenticated session for treatment history lookup.");
         setLoading(false);
         return;
       }
@@ -917,6 +931,9 @@ function ClientTreatmentHistoryModal({
       if (!active) return;
       if (!res?.success || !res.data) {
         setGroups([]);
+        setHistoryError(
+          String(res?.error || "Database Error: Failed to retrieve treatment history from the database.")
+        );
         setLoading(false);
         return;
       }
@@ -1030,6 +1047,21 @@ function ClientTreatmentHistoryModal({
         <div className="p-5 max-h-[85vh] overflow-y-auto">
           {loading ? (
             <p className="text-sm text-slate-500">Loading...</p>
+          ) : historyError ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
+              <p className="text-sm font-extrabold uppercase tracking-wide text-rose-700">Database Error</p>
+              <p className="mt-2 text-sm text-rose-700">
+                The patient treatment history could not be displayed because the database request failed.
+              </p>
+              <div className="mt-4 rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm text-slate-700">
+                <p>
+                  <span className="font-extrabold text-slate-900">Reason:</span> {historyError}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  For documentation screenshot purposes, treatment data is hidden while this database error state is active.
+                </p>
+              </div>
+            </div>
           ) : groups.length === 0 ? (
             <p className="text-sm text-slate-500">No treatment history found.</p>
           ) : (
