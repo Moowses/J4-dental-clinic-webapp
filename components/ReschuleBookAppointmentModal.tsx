@@ -5,6 +5,10 @@ import {
   getAvailabilityAction,
   rescheduleAppointmentAction,
 } from "@/app/actions/appointment-actions";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+} from "@/components/admin/ActionFeedbackModals";
 
 type AppointmentLike = {
   id: string;
@@ -92,8 +96,6 @@ function isSameYMD(a: string, b: string) {
 
 const inputBase =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-300";
-const PROCEED_PROMPT = "Are you sure to proceed?";
-
 export default function ReschuleBookAppointmentModal({
   open,
   appointment,
@@ -114,6 +116,7 @@ export default function ReschuleBookAppointmentModal({
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [mobileStep, setMobileStep] = useState<1 | 2>(1);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const currentDate = appointment?.date || "";
   const currentTime = appointment?.time || "";
@@ -202,6 +205,7 @@ export default function ReschuleBookAppointmentModal({
     setTakenSlots([]);
     setHolidayReason(null);
     setIsHoliday(false);
+    setConfirmOpen(false);
 
     // set calendar month to appointment month if exists
     if (initialDate) {
@@ -304,14 +308,13 @@ export default function ReschuleBookAppointmentModal({
     date >= todayYMD;
   const canProceedToTime = !!date && !rescheduleBlocked && !isHoliday;
 
-  async function handleSave() {
+  async function confirmSave() {
     if (!appointment?.id) return;
-    const proceed = window.confirm(PROCEED_PROMPT);
-    if (!proceed) return;
 
     setSaving(true);
     setErr(null);
     setOk(null);
+    setConfirmOpen(false);
 
     try {
       const res = await rescheduleAppointmentAction(
@@ -376,6 +379,7 @@ export default function ReschuleBookAppointmentModal({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="relative w-full max-w-4xl max-h-[94vh] overflow-y-auto rounded-2xl bg-white shadow-xl border border-slate-200">
+        {saving ? <ProcessingModal title="Processing" message="Saving reschedule..." /> : null}
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
           <div>
@@ -672,7 +676,7 @@ export default function ReschuleBookAppointmentModal({
           </button>
 
           <button
-            onClick={handleSave}
+            onClick={() => setConfirmOpen(true)}
             disabled={!canSubmit}
             className="rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -680,6 +684,25 @@ export default function ReschuleBookAppointmentModal({
           </button>
         </div>
       </div>
+      {confirmOpen ? (
+        <ConfirmActionModal
+          title="Confirm reschedule"
+          message="Are you sure you want to reschedule this appointment?"
+          details={
+            <div className="space-y-1 text-sm text-slate-600">
+              <p>
+                New date: <span className="font-bold text-slate-900">{formatPrettyDate(date)}</span>
+              </p>
+              <p>
+                New time: <span className="font-bold text-slate-900">{formatTime12h(time)}</span>
+              </p>
+            </div>
+          }
+          confirmLabel="Save reschedule"
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={confirmSave}
+        />
+      ) : null}
     </div>
   );
 }

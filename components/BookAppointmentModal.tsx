@@ -8,12 +8,15 @@ import {
   CalendarAvailability,
   getAvailabilityAction,
 } from "@/app/actions/appointment-actions";
+import {
+  ConfirmActionModal,
+  ProcessingModal,
+} from "@/components/admin/ActionFeedbackModals";
 
 import { getAllProcedures } from "@/lib/services/clinic-service";
 import type { DentalProcedure } from "@/lib/types/clinic";
 
 const BRAND = "#0E4B5A";
-const PROCEED_PROMPT = "Are you sure to proceed?";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TIME_SLOTS = ["08:00", "09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"];
 
@@ -120,6 +123,8 @@ export default function BookAppointmentModal({
   const router = useRouter();
 
   const [state, formAction, isPending] = useActionState(bookAppointmentAction, { success: false, error: "" });
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const confirmSubmitRef = useRef(false);
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const minBookDate = useMemo(() => addDays(today, 1), [today]);
@@ -139,6 +144,7 @@ export default function BookAppointmentModal({
   const [procLoading, setProcLoading] = useState(false);
   const [procError, setProcError] = useState("");
   const [mobileStep, setMobileStep] = useState<1 | 2>(1);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Load availability on date change
   useEffect(() => {
@@ -176,6 +182,7 @@ export default function BookAppointmentModal({
       setViewDate(startOfDay(new Date()));
       setProcError("");
       setMobileStep(1);
+      setConfirmOpen(false);
       return;
     }
 
@@ -269,6 +276,7 @@ export default function BookAppointmentModal({
           </button>
         </div>
 
+        {isPending ? <ProcessingModal title="Processing" message="Booking appointment..." /> : null}
         <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr]">
           {/* Left: Calendar + slots */}
           <div className={`${mobileStep === 1 ? "block" : "hidden md:block"} p-4 md:p-6 md:border-r border-slate-100`}>
@@ -400,6 +408,7 @@ export default function BookAppointmentModal({
           {/* Right: Details + submit */}
           <div className={`${mobileStep === 2 ? "block" : "hidden md:block"} p-4 md:p-6`}>
             <form
+              ref={formRef}
               action={formAction}
               className="space-y-4"
               onSubmit={(e) => {
@@ -421,9 +430,13 @@ export default function BookAppointmentModal({
                   return;
                 }
 
-                if (typeof window !== "undefined" && !window.confirm(PROCEED_PROMPT)) {
-                  e.preventDefault();
+                if (confirmSubmitRef.current) {
+                  confirmSubmitRef.current = false;
+                  return;
                 }
+
+                e.preventDefault();
+                setConfirmOpen(true);
               }}
             >
               <div className="md:hidden">
@@ -521,6 +534,29 @@ export default function BookAppointmentModal({
           </div>
         </div>
       </div>
+      {confirmOpen ? (
+        <ConfirmActionModal
+          title="Confirm booking"
+          message="Are you sure you want to book this appointment?"
+          details={
+            <div className="space-y-1 text-sm text-slate-600">
+              <p>
+                Date: <span className="font-bold text-slate-900">{selectedDate || "N/A"}</span>
+              </p>
+              <p>
+                Time: <span className="font-bold text-slate-900">{selectedTime ? formatTime12h(selectedTime) : "N/A"}</span>
+              </p>
+            </div>
+          }
+          confirmLabel="Confirm Booking"
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            confirmSubmitRef.current = true;
+            formRef.current?.requestSubmit();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

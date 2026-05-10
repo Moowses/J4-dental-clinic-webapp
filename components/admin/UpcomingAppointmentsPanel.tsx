@@ -30,12 +30,6 @@ function parseLocalYMD(ymd: string) {
   return new Date(`${ymd}T00:00:00`);
 }
 
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
 function addMonths(date: Date, months: number) {
   const d = new Date(date);
   d.setMonth(d.getMonth() + months);
@@ -53,6 +47,7 @@ const inputBase =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-300";
 
 type RangeValue = "15d" | "30d" | "1m" | "2m" | "3m" | "4m" | "6m";
+type FilterMode = "rolling" | "month";
 
 const UPCOMING_RANGE_OPTIONS: Array<{ value: RangeValue; label: string }> = [
   { value: "1m", label: "Next 1 month" },
@@ -105,6 +100,33 @@ function buildDateRange(mode: "upcoming" | "previous", range: RangeValue) {
   }
 
   return dates;
+}
+
+function buildMonthDateRange(monthValue: string) {
+  const [yearStr, monthStr] = monthValue.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return buildDateRange("upcoming", "2m");
+  }
+
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  const dates: string[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(formatLocalYMD(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function getCurrentMonthValue() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function pillClass(status: string) {
@@ -281,9 +303,13 @@ export default function UpcomingAppointmentsPanel({
   view?: "upcoming" | "previous" | "completed" | "cancelled" | "no_show";
   canDelete?: boolean;
 }) {
+  const previousRescheduleMessage =
+    "To book again another appointment, you can reschedule future or upcoming booking, not past booking.";
   const [range, setRange] = useState<RangeValue>(
     view === "previous" ? "30d" : "2m"
   );
+  const [filterMode, setFilterMode] = useState<FilterMode>("rolling");
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -333,7 +359,10 @@ export default function UpcomingAppointmentsPanel({
     setSuccessMsg(null);
 
     try {
-      const dates = buildDateRange(view === "previous" ? "previous" : "upcoming", range);
+      const dates =
+        filterMode === "month"
+          ? buildMonthDateRange(selectedMonth)
+          : buildDateRange(view === "previous" ? "previous" : "upcoming", range);
 
       const concurrency = 6;
       let idx = 0;
@@ -371,10 +400,11 @@ export default function UpcomingAppointmentsPanel({
     } finally {
       setLoading(false);
     }
-  }, [range, view]);
+  }, [filterMode, range, selectedMonth, view]);
 
   useEffect(() => {
     setRange(view === "previous" ? "30d" : "2m");
+    setFilterMode("rolling");
   }, [view]);
 
   useEffect(() => {
@@ -440,6 +470,19 @@ export default function UpcomingAppointmentsPanel({
       patientName: String(targetName),
       action,
     });
+  }
+
+  function openPreviousStatusConfirm(row: UpcomingRow, action: "confirmed" | "cancelled" | "no_show") {
+    if (!row.dentistId) {
+      setActionResult({
+        tone: "error",
+        title: "Dentist Required",
+        message: "Please select dentist and try again.",
+      });
+      return;
+    }
+
+    openStatusConfirm(String(row.id || ""), action);
   }
 
   async function runStatusAction(appointmentId: string, action: "confirmed" | "cancelled" | "no_show") {
@@ -593,16 +636,34 @@ export default function UpcomingAppointmentsPanel({
 
         <div className="flex flex-wrap items-center gap-2">
           <select
-            value={range}
-            onChange={(e) => setRange(e.target.value as RangeValue)}
+            value={filterMode}
+            onChange={(e) => setFilterMode(e.target.value as FilterMode)}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
           >
-            {rangeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+            <option value="rolling">Rolling range</option>
+            <option value="month">Specific month</option>
           </select>
+
+          {filterMode === "month" ? (
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+            />
+          ) : (
+            <select
+              value={range}
+              onChange={(e) => setRange(e.target.value as RangeValue)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+            >
+              {rangeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
 
           <button
             onClick={fetchUpcoming}
@@ -696,7 +757,7 @@ export default function UpcomingAppointmentsPanel({
                       <select
                         className={`${inputBase} mt-1`}
                         value={a.dentistId || ""}
-                        disabled={isPrevious || isBusy || isCancelled || isCompleted || isNoShow}
+                        disabled={isBusy || isCancelled || isCompleted || isNoShow}
                         onChange={(e) => handleAssign(id, e.target.value)}
                       >
                         <option value="">Select dentist…</option>
@@ -758,17 +819,57 @@ export default function UpcomingAppointmentsPanel({
                         </button>
                       ) : null}
                     </div>
-                  ) : canDelete ? (
+                  ) : (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                       <button
-                        onClick={() => handleDelete(id)}
-                        disabled={isBusy}
-                        className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        type="button"
+                        onClick={() => openPreviousStatusConfirm(a, "confirmed")}
+                        disabled={isBusy || isCancelled || isCompleted || isNoShow || isConfirmed}
+                        title={!a.dentistId ? "Please select dentist and try again." : ""}
+                        className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-extrabold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {busy[id]?.deleting ? "Deleting..." : "Delete"}
+                        {busy[id]?.confirming ? "Confirming..." : "Confirm"}
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openPreviousStatusConfirm(a, "cancelled")}
+                        disabled={isBusy || isCancelled || isCompleted || isNoShow}
+                        title={!a.dentistId ? "Please select dentist and try again." : ""}
+                        className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-extrabold text-rose-800 hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {busy[id]?.cancelling ? "Cancelling..." : "Cancel"}
+                      </button>
+
+                      <button
+                        onClick={() => openPreviousStatusConfirm(a, "no_show")}
+                        disabled={isBusy || isCancelled || isCompleted || isNoShow}
+                        title={!a.dentistId ? "Please select dentist and try again." : ""}
+                        className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-extrabold text-orange-800 hover:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {busy[id]?.noShowing ? "Saving..." : "No Show"}
+                      </button>
+
+                      <button
+                        type="button"
+                        title={previousRescheduleMessage}
+                        aria-disabled="true"
+                        className="cursor-not-allowed rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-700 opacity-50"
+                      >
+                        Reschedule
+                      </button>
+
+                      {canDelete ? (
+                        <button
+                          onClick={() => handleDelete(id)}
+                          disabled={isBusy}
+                          className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {busy[id]?.deleting ? "Deleting..." : "Delete"}
+                        </button>
+                      ) : null}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               );
             })}

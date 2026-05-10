@@ -41,8 +41,11 @@ export default function AppointmentRowActions({
             ? "bg-slate-900 text-white hover:opacity-95"
             : "cursor-not-allowed bg-slate-100 text-slate-400",
         ].join(" ")}
-        onClick={onTransactions}
-        disabled={!canTransactions}
+        onClick={() => {
+          if (!canTransactions) return;
+          onTransactions();
+        }}
+        aria-disabled={!canTransactions}
         title={!canTransactions ? "Available after completion" : ""}
       >
         Transactions
@@ -58,8 +61,11 @@ export default function AppointmentRowActions({
                   ? "cursor-not-allowed bg-slate-100 text-slate-400"
                   : "bg-blue-50 text-blue-700 hover:bg-blue-100",
               ].join(" ")}
-              onClick={onReschedule}
-              disabled={Boolean(rescheduleDisabledReason)}
+              onClick={() => {
+                if (rescheduleDisabledReason) return;
+                onReschedule();
+              }}
+              aria-disabled={Boolean(rescheduleDisabledReason)}
               title={rescheduleDisabledReason || ""}
             >
               Reschedule
@@ -72,8 +78,11 @@ export default function AppointmentRowActions({
                 ? "cursor-not-allowed bg-slate-100 text-slate-400"
                 : "bg-red-50 text-red-700 hover:bg-red-100",
             ].join(" ")}
-            onClick={onCancel}
-            disabled={Boolean(cancelDisabledReason)}
+            onClick={() => {
+              if (cancelDisabledReason) return;
+              onCancel();
+            }}
+            aria-disabled={Boolean(cancelDisabledReason)}
             title={cancelDisabledReason || ""}
           >
             Cancel

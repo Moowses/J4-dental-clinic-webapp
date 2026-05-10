@@ -18,13 +18,18 @@ export const paymentSchema = z.object({
 
 // Helper to validate business rules (can be used in the Action)
 export function validateAppointmentDate(dateStr: string) {
-  const inputDate = new Date(dateStr);
+  const inputDate = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(inputDate.getTime())) {
+    return "Invalid appointment date.";
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const minDate = new Date(today);
+  minDate.setDate(minDate.getDate() + 1);
 
-  // Allow same-day booking (inputDate >= today)
-  if (inputDate < today) {
-    return "Appointments cannot be booked in the past.";
+  if (inputDate < minDate) {
+    return "Appointments must be booked at least 1 day in advance.";
   }
 
   // Extend max booking window to 3 months (approx 90 days)

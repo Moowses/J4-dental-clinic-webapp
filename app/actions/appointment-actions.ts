@@ -560,6 +560,37 @@ export async function rescheduleAppointmentAction(
       return { success: false, error: "Missing required fields" };
     }
 
+    const targetDate = new Date(`${newDate}T00:00:00`);
+    if (Number.isNaN(targetDate.getTime())) {
+      return { success: false, error: "Invalid reschedule date." };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (targetDate < today) {
+      return { success: false, error: "You can't choose a past date." };
+    }
+
+    const [targetHour, targetMinute] = String(newTime)
+      .split(":")
+      .map((value) => parseInt(value, 10));
+    if (Number.isNaN(targetHour) || Number.isNaN(targetMinute)) {
+      return { success: false, error: "Invalid reschedule time." };
+    }
+
+    const targetDateTime = new Date(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      targetDate.getDate(),
+      targetHour,
+      targetMinute,
+      0,
+      0
+    );
+    if (targetDateTime.getTime() <= Date.now()) {
+      return { success: false, error: "Please choose a future date and time." };
+    }
+
     const currentAppt = await getAppointmentById(appointmentId);
     if (!currentAppt.success || !currentAppt.data) {
       return { success: false, error: currentAppt.error || "Appointment not found" };

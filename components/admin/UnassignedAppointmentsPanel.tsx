@@ -24,12 +24,6 @@ function parseLocalYMD(ymd: string) {
   return new Date(`${ymd}T00:00:00`);
 }
 
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
 function addMonths(date: Date, months: number) {
   const d = new Date(date);
   d.setMonth(d.getMonth() + months);
@@ -39,6 +33,7 @@ function addMonths(date: Date, months: number) {
 type UnassignedRow = AppointmentWithPatient & { dateStr: string };
 
 type RangeValue = "1m" | "2m" | "3m" | "4m" | "6m";
+type FilterMode = "rolling" | "month";
 
 const RANGE_OPTIONS: Array<{ value: RangeValue; label: string }> = [
   { value: "1m", label: "Next 1 month" },
@@ -60,6 +55,33 @@ function buildUpcomingDateRange(range: RangeValue) {
   }
 
   return dates;
+}
+
+function buildMonthDateRange(monthValue: string) {
+  const [yearStr, monthStr] = monthValue.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return buildUpcomingDateRange("2m");
+  }
+
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  const dates: string[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(formatLocalYMD(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function getCurrentMonthValue() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 }
 
 const inputBase =
@@ -226,6 +248,8 @@ export default function UnassignedAppointmentsPanel({
   canDelete?: boolean;
 }) {
   const [range, setRange] = useState<RangeValue>("2m");
+  const [filterMode, setFilterMode] = useState<FilterMode>("rolling");
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -250,7 +274,10 @@ export default function UnassignedAppointmentsPanel({
     setSuccessMsg(null);
 
     try {
-      const dates = buildUpcomingDateRange(range);
+      const dates =
+        filterMode === "month"
+          ? buildMonthDateRange(selectedMonth)
+          : buildUpcomingDateRange(range);
 
       const concurrency = 6;
       let idx = 0;
@@ -287,7 +314,7 @@ export default function UnassignedAppointmentsPanel({
     } finally {
       setLoading(false);
     }
-  }, [range]);
+  }, [filterMode, range, selectedMonth]);
 
   useEffect(() => {
     fetchDentists();
@@ -373,16 +400,34 @@ export default function UnassignedAppointmentsPanel({
 
         <div className="flex flex-wrap items-center gap-2">
           <select
-            value={range}
-            onChange={(e) => setRange(e.target.value as RangeValue)}
+            value={filterMode}
+            onChange={(e) => setFilterMode(e.target.value as FilterMode)}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
           >
-            {RANGE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+            <option value="rolling">Rolling range</option>
+            <option value="month">Specific month</option>
           </select>
+
+          {filterMode === "month" ? (
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+            />
+          ) : (
+            <select
+              value={range}
+              onChange={(e) => setRange(e.target.value as RangeValue)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+            >
+              {RANGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
 
           <button
             onClick={fetchUnassigned}
