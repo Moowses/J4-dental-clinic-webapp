@@ -27,6 +27,7 @@ import TransactionsTable from "@/components/client/TransactionsTable";
 import { getUserDisplayNameByUid } from "@/lib/services/user-service";
 import { auth } from "@/lib/firebase/firebase";
 import { Odontogram } from "react-odontogram";
+import { PatientEditModal } from "@/components/admin/PatientRecordsPanel";
 import {
   ConfirmActionModal,
   ProcessingModal,
@@ -677,7 +678,6 @@ function AccountSettingsForm({
           <h3 className="text-lg font-extrabold text-slate-900">Account Settings</h3>
           <p className="mt-2 text-sm text-slate-600">Keep your contact details updated so the clinic can reach you.</p>
         </div>
-
         {state.success && (
           <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 border border-emerald-200">
             Saved
@@ -775,7 +775,6 @@ function AccountSettingsForm({
               required
             />
           </div>
-
           <div>
             <label className="text-xs font-bold text-slate-600">Email</label>
             <input
@@ -785,8 +784,6 @@ function AccountSettingsForm({
             />
           </div>
         </div>
-
-
 
         <button
           type="submit"
@@ -1226,6 +1223,7 @@ export default function ClientDashboardPage() {
 
   const [record, setRecord] = useState<PatientRecord | null>(null);
   const [recordLoading, setRecordLoading] = useState(true);
+  const [profileGateOpen, setProfileGateOpen] = useState(false);
 
   const [openBooking, setOpenBooking] = useState(false);
   const [openReschedule, setOpenReschedule] = useState(false);
@@ -1351,25 +1349,34 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
 }, [appointments]);
 
 
-  useEffect(() => {
+  const refreshRecord = useCallback(async () => {
     if (!user?.uid) return;
 
-    let cancelled = false;
     setRecordLoading(true);
-
-    getPatientRecord(user.uid)
-      .then((res) => {
-        if (cancelled) return;
-        if (res?.success) setRecord(res.data || null);
-      })
-      .finally(() => {
-        if (!cancelled) setRecordLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const res = await getPatientRecord(user.uid);
+      if (res?.success) {
+        setRecord((res.data || null) as PatientRecord | null);
+      } else {
+        setRecord(null);
+      }
+    } finally {
+      setRecordLoading(false);
+    }
   }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    refreshRecord();
+  }, [refreshRecord, user?.uid]);
+
+  useEffect(() => {
+    if (loading || recordLoading) return;
+    if (!user?.uid) return;
+    if (!record?.isProfileComplete) {
+      setProfileGateOpen(true);
+    }
+  }, [loading, record?.isProfileComplete, recordLoading, user?.uid]);
 
  useEffect(() => {
   let mounted = true;
@@ -1528,6 +1535,19 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
     }
     setSelectedAppt(appt);
     setOpenReschedule(true);
+  }
+
+  function handleOpenBooking() {
+    if (!record?.isProfileComplete) {
+      setProfileGateOpen(true);
+      setActionNotice({
+        title: "Complete your profile",
+        message: "Please complete your personal information before booking an appointment.",
+      });
+      return;
+    }
+
+    setOpenBooking(true);
   }
 
   if (loading) {
@@ -1718,7 +1738,7 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
               <AppointmentsTable
                 appointments={appointments}
                 loading={historyLoading}
-                onAddAppointment={() => setOpenBooking(true)}
+                onAddAppointment={handleOpenBooking}
                 onOpenModal={openModal}
                 onReschedule={handleOpenReschedule}
                 onCancel={handleCancelAppointment}
@@ -1783,15 +1803,15 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
                   <div className="h-12 rounded-xl bg-slate-100" />
                 </div>
               </div>
-            ) : (
-                <AccountSettingsForm
-                  userDisplayName={patientName}
-                  email={user.email || ""}
-                  record={record}
-                  userPhotoUrl={photoUrl}
-                  onPhotoUpdated={setPhotoUrl}
-                />
-              )}
+            ) : user?.uid ? (
+              <AccountSettingsForm
+                userDisplayName={patientName}
+                email={user.email || ""}
+                record={record}
+                userPhotoUrl={photoUrl}
+                onPhotoUpdated={setPhotoUrl}
+              />
+            ) : null}
           </section>
         </div>
       </div>
@@ -1844,6 +1864,23 @@ const [dentistNameMap, setDentistNameMap] = useState<Record<string, string>>({})
           title={actionNotice.title}
           message={actionNotice.message}
           onClose={() => setActionNotice(null)}
+        />
+      ) : null}
+      {profileGateOpen && user?.uid ? (
+        <PatientEditModal
+          patientId={user.uid}
+          onClose={() => setProfileGateOpen(false)}
+          onSaved={async () => {
+            await refreshRecord();
+            setProfileGateOpen(false);
+          }}
+          initialEmail={user.email || ""}
+          lockEmail
+          onboardingMode
+          title="Complete Your Personal Information"
+          subtitle="Please complete your patient profile before booking an appointment."
+          confirmOnSave
+          confirmMessage="Are you sure you want to save your personal information?"
         />
       ) : null}
       {openTreatmentRecord && user?.uid && (

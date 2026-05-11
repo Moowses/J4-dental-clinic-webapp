@@ -20,12 +20,31 @@ import {
 import { z } from "zod";
 import { createUserDocument } from "./user-service";
 
-function getEmailVerificationActionCodeSettings(): ActionCodeSettings {
-  const appUrl =
-    (process.env.NEXT_PUBLIC_APP_URL || "").trim() ||
-    (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+function getAppBaseUrl() {
+  const envRaw = (process.env.NEXT_PUBLIC_APP_URL || "").trim();
+  const browserOrigin =
+    typeof window !== "undefined" ? window.location.origin.trim() : "";
 
-  const continueUrl = new URL("/", appUrl);
+  const candidate =
+    browserOrigin && !browserOrigin.includes("localhost")
+      ? browserOrigin
+      : envRaw || browserOrigin || "http://localhost:3000";
+
+  const withProtocol = /^https?:\/\//i.test(candidate)
+    ? candidate
+    : candidate.includes("localhost")
+    ? `http://${candidate}`
+    : `https://${candidate}`;
+
+  try {
+    return new URL(withProtocol).origin;
+  } catch {
+    return browserOrigin || "http://localhost:3000";
+  }
+}
+
+function getEmailVerificationActionCodeSettings(): ActionCodeSettings {
+  const continueUrl = new URL("/", getAppBaseUrl());
   continueUrl.searchParams.set("auth", "login");
   continueUrl.searchParams.set("verified", "1");
 
