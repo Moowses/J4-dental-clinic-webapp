@@ -516,7 +516,7 @@ export default function WalkInBookingModal({
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const minBookDate = useMemo(() => today, [today]);
-  const allowPastBooking = isStaff;
+  const allowPastBooking = true;
 
   const [viewDate, setViewDate] = useState<Date>(() => startOfDay(new Date()));
   const [selectedDate, setSelectedDate] = useState<string>("");
@@ -964,7 +964,7 @@ export default function WalkInBookingModal({
                 <p className="text-xs text-slate-500">
                   {isStaff
                     ? "Staff can navigate previous months and encode old walk-in visits."
-                    : "Today is allowed (past time slots disabled)"}
+                    : "Previous, current, and future dates are allowed."}
                 </p>
               </div>
 

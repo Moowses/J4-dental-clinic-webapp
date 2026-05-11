@@ -25,12 +25,6 @@ export function validateAppointmentDate(dateStr: string) {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const minDate = new Date(today);
-  minDate.setDate(minDate.getDate() + 1);
-
-  if (inputDate < minDate) {
-    return "Appointments must be booked at least 1 day in advance.";
-  }
 
   // Extend max booking window to 3 months (approx 90 days)
   const maxDate = new Date(today);

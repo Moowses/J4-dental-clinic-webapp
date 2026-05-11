@@ -29,9 +29,6 @@ function toISODate(d: Date) {
 function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
-function addDays(d: Date, days: number) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
-}
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -127,7 +124,6 @@ export default function BookAppointmentModal({
   const confirmSubmitRef = useRef(false);
 
   const today = useMemo(() => startOfDay(new Date()), []);
-  const minBookDate = useMemo(() => addDays(today, 1), [today]);
   const [viewDate, setViewDate] = useState<Date>(() => startOfDay(new Date()));
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState<string>("");
@@ -261,7 +257,7 @@ export default function BookAppointmentModal({
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">Book an Appointment</h3>
-            <p className="mt-1 text-xs text-slate-500">Choose a date (tomorrow onwards), then pick a time slot.</p>
+            <p className="mt-1 text-xs text-slate-500">Choose a date, then pick a time slot.</p>
             <p className="mt-2 text-xs font-semibold text-slate-600 md:hidden">
               Step {mobileStep} of 2: {mobileStep === 1 ? "Date & Time" : "Appointment Details"}
             </p>
@@ -291,7 +287,7 @@ export default function BookAppointmentModal({
 
               <div className="text-center">
                 <p className="text-sm font-extrabold text-slate-900">{monthLabel(viewDate)}</p>
-                <p className="text-xs text-slate-500">Same-day booking is not allowed</p>
+                <p className="text-xs text-slate-500">Past and future dates are allowed</p>
               </div>
 
               <button
@@ -315,14 +311,11 @@ export default function BookAppointmentModal({
               {gridCells.map(({ date, inMonth }, idx) => {
                 const d0 = startOfDay(date);
 
-                const isTooEarly = d0.getTime() < minBookDate.getTime();
                 const isToday = isSameDay(d0, today);
                 const isSelected = selectedDateObj ? isSameDay(d0, selectedDateObj) : false;
 
                 const base = "h-10 rounded-xl border text-sm font-bold transition focus:outline-none";
-                const classes = isTooEarly
-                  ? `${base} border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed`
-                  : isSelected
+                const classes = isSelected
                   ? `${base} border-transparent text-white`
                   : `${base} border-slate-200 bg-white text-slate-800 hover:bg-slate-50`;
 
@@ -330,7 +323,6 @@ export default function BookAppointmentModal({
                   <button
                     key={idx}
                     type="button"
-                    disabled={isTooEarly}
                     onClick={() => {
                       setClientError("");
                       setSelectedDate(toISODate(d0));
@@ -339,7 +331,6 @@ export default function BookAppointmentModal({
                     className={classes}
                     style={isSelected ? { backgroundColor: BRAND } : undefined}
                     aria-label={toISODate(d0)}
-                    title={isTooEarly ? "Appointments must be booked at least 1 day in advance." : ""}
                   >
                     <span className={`${!inMonth ? "opacity-40" : ""}`}>{d0.getDate()}</span>
                     {isToday && !isSelected && (
@@ -412,17 +403,6 @@ export default function BookAppointmentModal({
               action={formAction}
               className="space-y-4"
               onSubmit={(e) => {
-                if (selectedDate) {
-                  const sel = startOfDay(new Date(selectedDate + "T00:00:00"));
-                  if (sel.getTime() < minBookDate.getTime()) {
-                    e.preventDefault();
-                    setClientError(
-                      "Appointments must be booked at least 1 day in advance. Please select a future date."
-                    );
-                    return;
-                  }
-                }
-
                 // If guest, require name
                 if (!isLoggedIn && !fullName.trim()) {
                   e.preventDefault();
@@ -528,7 +508,7 @@ export default function BookAppointmentModal({
               </div>
 
               <p className="text-xs text-slate-500">
-                Note: Same-day appointments are not allowed. Please book at least 1 day in advance.
+                Note: You can now book previous, same-day, or future dates up to 3 months ahead.
               </p>
             </form>
           </div>
