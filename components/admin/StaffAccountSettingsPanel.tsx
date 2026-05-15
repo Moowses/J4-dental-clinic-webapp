@@ -25,6 +25,7 @@ import type { BillingRecord } from "@/lib/types/billing";
 const CROP_PREVIEW_SIZE = 220;
 const OUTPUT_SIZE = 512;
 const LOG_LIMIT = 40;
+const APPOINTMENT_FETCH_LIMIT = 120;
 
 type ActivityLogRow = {
   id: string;
@@ -175,8 +176,8 @@ export default function StaffAccountSettingsPanel() {
       try {
         const appointmentsQuery = query(
           collection(db, "appointments"),
-          orderBy("createdAt", "desc"),
-          limit(LOG_LIMIT)
+          orderBy("date", "desc"),
+          limit(APPOINTMENT_FETCH_LIMIT)
         );
         const billingQuery = query(
           collection(db, "billing_records"),
