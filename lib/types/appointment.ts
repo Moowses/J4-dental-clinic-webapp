@@ -55,4 +55,5 @@ export interface Appointment {
   rescheduleReason?: string;
   
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }

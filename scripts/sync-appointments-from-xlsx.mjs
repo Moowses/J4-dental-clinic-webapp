@@ -91,6 +91,20 @@ function formatExcelSerialTime(value) {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
+function formatExcelSerialDate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+
+  const excelEpochUtc = Date.UTC(1899, 11, 30);
+  const asDate = new Date(excelEpochUtc + numeric * 24 * 60 * 60 * 1000);
+  if (Number.isNaN(asDate.getTime())) return "";
+
+  const year = asDate.getUTCFullYear();
+  const month = String(asDate.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(asDate.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function normalizeTime(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -120,6 +134,10 @@ function normalizeDate(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
 
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    return formatExcelSerialDate(raw);
+  }
+
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     return raw;
   }
@@ -143,18 +161,27 @@ function getTimestampForSchedule(date, time) {
   return Timestamp.fromDate(parsed);
 }
 
+function getTimestampForLoggedAt(loggedAt, fallbackDate, fallbackTime) {
+  const raw = String(loggedAt || "").trim();
+  if (raw) {
+    const normalized = raw.replace(/\s*-\s*/g, " ").replace(/\s+/g, " ").trim();
+    const parsed = new Date(`${normalized} GMT+0800`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return Timestamp.fromDate(parsed);
+    }
+  }
+  return getTimestampForSchedule(fallbackDate, fallbackTime);
+}
+
 function dedupeRows(rows) {
-  const seen = new Set();
-  const result = [];
+  const byKey = new Map();
 
   for (const row of rows) {
     const key = [row.email, row.date, row.time, normalizeService(row.service)].join("|");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(row);
+    byKey.set(key, row);
   }
 
-  return result;
+  return Array.from(byKey.values());
 }
 
 function parseRowsFromWorkbook(workbookPath) {
@@ -196,13 +223,14 @@ foreach ($row in $sheetDoc.SelectNodes('//x:sheetData/x:row', $sheetNs)) {
     $value = if ($type -eq 's') { $shared[[int]$raw] } else { $raw }
     $cells[$col] = [string]$value
   }
-  $rows += [PSCustomObject]@{
-    Name = [string]($cells['A'])
-    Email = [string]($cells['B'])
-    Service = [string]($cells['C'])
-    Time = [string]($cells['D'])
-    Date = [string]($cells['E'])
-  }
+      $rows += [PSCustomObject]@{
+        Name = [string]($cells['A'])
+        Email = [string]($cells['B'])
+        Service = [string]($cells['C'])
+        Time = [string]($cells['D'])
+        Date = [string]($cells['E'])
+        LoggedAt = [string]($cells['F'])
+      }
 }
 $zip.Dispose()
 $rows | ConvertTo-Json -Depth 3 -Compress
@@ -229,6 +257,7 @@ $rows | ConvertTo-Json -Depth 3 -Compress
       service: String(row.Service || "").trim(),
       time: normalizeTime(row.Time),
       date: normalizeDate(row.Date),
+      loggedAt: String(row.LoggedAt || "").trim(),
     }))
     .filter((row) => {
       if (!row.name && !row.email && !row.service && !row.time && !row.date) return false;
@@ -346,7 +375,7 @@ async function run() {
 
     if (replaceAll) {
       summary.createCount += 1;
-      const scheduleTimestamp = getTimestampForSchedule(row.date, row.time);
+      const loggedTimestamp = getTimestampForLoggedAt(row.loggedAt, row.date, row.time);
       summary.actions.push({
         type: "create",
         uid: patientId,
@@ -359,8 +388,8 @@ async function run() {
           notes: "Imported from Appoint.xlsx",
           status: markCompleted ? "completed" : "pending",
           paymentStatus: "unpaid",
-          createdAt: scheduleTimestamp,
-          updatedAt: scheduleTimestamp,
+          createdAt: loggedTimestamp,
+          updatedAt: loggedTimestamp,
         },
       });
       continue;

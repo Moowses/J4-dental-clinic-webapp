@@ -16,6 +16,7 @@ import {
   ProcessingModal,
   ResultModal,
 } from "@/components/admin/ActionFeedbackModals";
+import RecentActivityLogsPanel from "@/components/admin/RecentActivityLogsPanel";
 import { useAuth } from "@/lib/hooks/useAuth";
 import type { ClinicSettings } from "@/lib/types/clinic";
 
@@ -881,6 +882,10 @@ export default function ClinicSettings() {
           </div>
         </div>
       )}
+
+      <div className="mt-5">
+        <RecentActivityLogsPanel />
+      </div>
     </section>
   );
 }

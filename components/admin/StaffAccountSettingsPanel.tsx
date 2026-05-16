@@ -4,41 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { updateUserDocument } from "@/lib/services/user-service";
 import { updateUserProfile } from "@/lib/services/auth-service";
-import { db } from "@/lib/firebase/firebase";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-} from "firebase/firestore";
 import {
   ConfirmActionModal,
   ProcessingModal,
   ResultModal,
 } from "@/components/admin/ActionFeedbackModals";
-import type { Appointment } from "@/lib/types/appointment";
-import type { BillingRecord } from "@/lib/types/billing";
 
 const CROP_PREVIEW_SIZE = 220;
 const OUTPUT_SIZE = 512;
-const LOG_LIMIT = 40;
-const APPOINTMENT_FETCH_LIMIT = 120;
-
-type ActivityLogRow = {
-  id: string;
-  kind: "appointment" | "service" | "payment";
-  kindLabel: string;
-  patientName: string;
-  serviceLabel: string;
-  description: string;
-  dateLabel: string;
-  sortMs: number;
-  statusLabel: string;
-  statusClass: string;
-};
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -54,83 +27,6 @@ function computeCrop(
   const cx = clamp(center.x, half, img.width - half);
   const cy = clamp(center.y, half, img.height - half);
   return { sx: cx - half, sy: cy - half, sSize: srcSize, cx, cy };
-}
-
-function toDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "toDate" in value &&
-    typeof (value as { toDate?: unknown }).toDate === "function"
-  ) {
-    const d = (value as { toDate: () => Date }).toDate();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
-  }
-
-  if (typeof value === "object" && value !== null && "seconds" in value) {
-    const seconds = (value as { seconds?: unknown }).seconds;
-    if (typeof seconds === "number") return new Date(seconds * 1000);
-  }
-
-  if (typeof value === "string" || typeof value === "number") {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  return null;
-}
-
-function formatLogDate(value: unknown) {
-  const d = toDate(value);
-  if (!d) return "Unknown date";
-  return d.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatAppointmentSlot(appt: Appointment) {
-  const date = String(appt.date || "").trim();
-  const time = String(appt.time || "").trim();
-  if (date && time) return `${date} at ${time}`;
-  return date || time || "Schedule not set";
-}
-
-function toAppointmentScheduleDate(appt: Appointment): Date | null {
-  const date = String(appt.date || "").trim();
-  const time = String(appt.time || "").trim();
-  if (!date) return null;
-  const value = time ? `${date}T${time}:00` : `${date}T00:00:00`;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function formatAppointmentScheduleLabel(appt: Appointment) {
-  const scheduledAt = toAppointmentScheduleDate(appt);
-  if (!scheduledAt) return formatAppointmentSlot(appt);
-  return scheduledAt.toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatMoney(value: number) {
-  return `P${Number(value || 0).toLocaleString()}`;
-}
-
-function getStatusClass(kind: ActivityLogRow["kind"]) {
-  if (kind === "appointment") return "border-sky-200 bg-sky-50 text-sky-700";
-  if (kind === "service") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 export default function StaffAccountSettingsPanel() {
@@ -157,163 +53,11 @@ export default function StaffAccountSettingsPanel() {
   const dragCenterRef = useRef<{ x: number; y: number } | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const [activityLogs, setActivityLogs] = useState<ActivityLogRow[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [logsError, setLogsError] = useState<string | null>(null);
 
   useEffect(() => {
     setDisplayName(user?.displayName || "");
     setPhotoUrl(user?.photoURL || null);
   }, [user?.displayName, user?.photoURL]);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadActivityLogs() {
-      setLogsLoading(true);
-      setLogsError(null);
-
-      try {
-        const appointmentsQuery = query(
-          collection(db, "appointments"),
-          orderBy("date", "desc"),
-          limit(APPOINTMENT_FETCH_LIMIT)
-        );
-        const billingQuery = query(
-          collection(db, "billing_records"),
-          orderBy("updatedAt", "desc"),
-          limit(LOG_LIMIT)
-        );
-
-        const [appointmentsSnap, billingSnap] = await Promise.all([
-          getDocs(appointmentsQuery),
-          getDocs(billingQuery),
-        ]);
-
-        const appointments = appointmentsSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Appointment[];
-        const billingRecords = billingSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as BillingRecord[];
-
-        const patientIds = Array.from(
-          new Set(
-            [...appointments, ...billingRecords]
-              .map((row) => String((row as { patientId?: string }).patientId || "").trim())
-              .filter(Boolean)
-          )
-        );
-
-        const patientPairs = await Promise.all(
-          patientIds.map(async (uid) => {
-            try {
-              const snap = await getDoc(doc(db, "users", uid));
-              return snap;
-            } catch {
-              return null;
-            }
-          })
-        );
-
-        const patientNameMap = new Map<string, string>();
-        for (let i = 0; i < patientIds.length; i += 1) {
-          const uid = patientIds[i];
-          const userSnap = patientPairs[i];
-          const data = userSnap?.data() as { displayName?: string; email?: string } | undefined;
-          patientNameMap.set(uid, String(data?.displayName || data?.email || uid).trim());
-        }
-
-        const appointmentMap = new Map<string, Appointment>();
-        appointments.forEach((appt) => appointmentMap.set(String(appt.id || ""), appt));
-
-        const rows: ActivityLogRow[] = [];
-
-        appointments.forEach((appt) => {
-          const patientId = String(appt.patientId || "").trim();
-          const patientName = patientNameMap.get(patientId) || patientId || "Unknown patient";
-          const serviceLabel = String(appt.serviceType || "Appointment").trim() || "Appointment";
-          const scheduledAt = toAppointmentScheduleDate(appt);
-
-          rows.push({
-            id: `appt-${appt.id}`,
-            kind: "appointment",
-            kindLabel: "Appointment",
-            patientName,
-            serviceLabel,
-            description: `Appointment booked for ${formatAppointmentSlot(appt)}`,
-            dateLabel: formatAppointmentScheduleLabel(appt),
-            sortMs: scheduledAt?.getTime() || toDate(appt.createdAt)?.getTime() || 0,
-            statusLabel: String(appt.status || "pending").replace(/_/g, " "),
-            statusClass: getStatusClass("appointment"),
-          });
-
-          if (appt.treatment?.completedAt) {
-            const procedures = Array.isArray(appt.treatment.procedures)
-              ? appt.treatment.procedures.map((p) => String(p?.name || "").trim()).filter(Boolean)
-              : [];
-            rows.push({
-              id: `svc-${appt.id}`,
-              kind: "service",
-              kindLabel: "Service Availed",
-              patientName,
-              serviceLabel: procedures[0] || serviceLabel,
-              description: procedures.length
-                ? `Services availed: ${procedures.join(", ")}`
-                : `Service availed: ${serviceLabel}`,
-              dateLabel: formatAppointmentScheduleLabel(appt),
-              sortMs: scheduledAt?.getTime() || toDate(appt.treatment.completedAt)?.getTime() || 0,
-              statusLabel: `Completed • ${formatMoney(Number(appt.treatment.totalBill || 0))}`,
-              statusClass: getStatusClass("service"),
-            });
-          }
-        });
-
-        billingRecords.forEach((bill) => {
-          const patientId = String(bill.patientId || "").trim();
-          const patientName = patientNameMap.get(patientId) || patientId || "Unknown patient";
-          const appt = appointmentMap.get(String(bill.appointmentId || ""));
-          const fallbackService = String(appt?.serviceType || "Payment").trim() || "Payment";
-
-          (Array.isArray(bill.transactions) ? bill.transactions : []).forEach((tx) => {
-            const items = Array.isArray(bill.items)
-              ? bill.items.map((item) => String(item?.name || "").trim()).filter(Boolean)
-              : [];
-            rows.push({
-              id: `pay-${bill.id}-${String(tx.id || Math.random())}`,
-              kind: "payment",
-              kindLabel: "Payment",
-              patientName,
-              serviceLabel: items[0] || fallbackService,
-              description: items.length
-                ? `Payment for ${items.join(", ")}`
-                : `Payment for ${fallbackService}`,
-              dateLabel: formatLogDate(tx.date),
-              sortMs: toDate(tx.date)?.getTime() || 0,
-              statusLabel: `${String(tx.method || "cash").toUpperCase()} • ${formatMoney(Number(tx.amount || 0))}`,
-              statusClass: getStatusClass("payment"),
-            });
-          });
-        });
-
-        rows.sort((a, b) => b.sortMs - a.sortMs);
-        if (active) setActivityLogs(rows.slice(0, LOG_LIMIT));
-      } catch (error) {
-        if (active) {
-          setLogsError(error instanceof Error ? error.message : "Failed to load activity logs.");
-        }
-      } finally {
-        if (active) setLogsLoading(false);
-      }
-    }
-
-    loadActivityLogs();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const drawPreview = useCallback(() => {
     const img = imageRef.current;
@@ -625,67 +369,6 @@ export default function StaffAccountSettingsPanel() {
           </button>
 
           {status && <p className="text-xs font-extrabold text-slate-600">{status}</p>}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-extrabold text-slate-900">Recent Activity Logs</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Tracks appointment entries, services availed, and payment transactions with patient names.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5">
-          {logsLoading ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
-              Loading activity logs...
-            </div>
-          ) : logsError ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
-              {logsError}
-            </div>
-          ) : !activityLogs.length ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
-              No logs found yet.
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-200">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-600">
-                  <tr>
-                    <th className="px-4 py-3">Booked / Logged At</th>
-                    <th className="px-4 py-3">Patient Name</th>
-                    <th className="px-4 py-3">Service</th>
-                    <th className="px-4 py-3">Details</th>
-                    <th className="px-4 py-3">Type</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {activityLogs.map((row) => (
-                    <tr key={row.id} className="align-top">
-                      <td className="px-4 py-4 text-slate-700">{row.dateLabel}</td>
-                      <td className="px-4 py-4 font-bold text-slate-900">{row.patientName}</td>
-                      <td className="px-4 py-4 text-slate-800">{row.serviceLabel}</td>
-                      <td className="px-4 py-4 text-slate-700">{row.description}</td>
-                      <td className="px-4 py-4">
-                        <div className="flex flex-col gap-2">
-                          <span
-                            className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-bold uppercase ${row.statusClass}`}
-                          >
-                            {row.kindLabel}
-                          </span>
-                          <span className="text-xs font-semibold text-slate-600">{row.statusLabel}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </div>
     </div>
