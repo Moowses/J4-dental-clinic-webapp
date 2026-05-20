@@ -9,16 +9,12 @@
 //   so reads to `billing_records` will fail with:
 //   "Missing or insufficient permissions."
 
-import {
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  Timestamp,
-  where,
-} from "firebase/firestore";
+import { collection, getDocs, query, Timestamp, where } from "firebase/firestore";
 
+import type { Appointment } from "@/lib/types/appointment";
+import type { BillingRecord } from "@/lib/types/billing";
 import { db } from "@/lib/firebase/firebase";
+import { getAllBillingRecords } from "@/lib/services/billing-service";
 import { getUserProfile } from "@/lib/services/user-service";
 
 type ReportRow = {
@@ -32,57 +28,54 @@ type ReportRow = {
   createdAt?: string;
 };
 
-export async function getBillingReport(rangeDays: number) {
-  const { auth } = await import("@/lib/firebase/firebase");
-  if (!auth.currentUser) throw new Error("Not authenticated");
+function buildAppointmentDate(dateStr?: string, timeStr?: string): Date | null {
+  if (!dateStr) return null;
+  const parsed = new Date(`${dateStr}T${timeStr || "00:00"}:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
-  // Ensure only staff can view the report (align with your app behavior)
-  const profile = await getUserProfile(auth.currentUser.uid);
-  if (!profile.success || !profile.data) throw new Error("Unable to load user profile");
-  if (profile.data.role === "client") throw new Error("Unauthorized: Staff only");
+function toDate(input: unknown): Date | null {
+  try {
+    if (!input) return null;
+    if (input instanceof Date) return input;
+    if (typeof input?.toDate === "function") return input.toDate();
+    if (typeof input?.seconds === "number") return new Date(input.seconds * 1000);
+    if (typeof input === "string" || typeof input === "number") {
+      const parsed = new Date(input);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
-  const { fromTs, toTs } = computeDateRangeTimestamps(rangeDays);
+function normalizeBillingRow(id: string, raw: Partial<BillingRecord> & Record<string, unknown>): ReportRow {
+  const totalAmount = Number(raw?.totalAmount ?? raw?.totalBill ?? raw?.total ?? 0);
+  const remainingBalance = Number(raw?.remainingBalance ?? raw?.remaining ?? 0);
+  const status = String(raw?.status ?? raw?.paymentStatus ?? "unpaid").toLowerCase();
+  const createdAtIso =
+    toDate(raw?.createdAt)?.toISOString?.() ??
+    toDate(raw?.updatedAt)?.toISOString?.() ??
+    undefined;
 
-  // Your documents have `createdAt` (Timestamp). Using date strings will not work.
-  // Also, range queries require an orderBy on the same field.
-  const q = query(
-    collection(db, "billing_records"),
-    where("createdAt", ">=", fromTs),
-    where("createdAt", "<=", toTs),
-    orderBy("createdAt", "desc")
-  );
+  return {
+    id,
+    appointmentId: String(raw?.appointmentId ?? id),
+    patientId: raw?.patientId,
+    patientName: raw?.patientName,
+    totalAmount: Number.isFinite(totalAmount) ? totalAmount : 0,
+    remainingBalance: Number.isFinite(remainingBalance)
+      ? remainingBalance
+      : Number.isFinite(totalAmount)
+      ? totalAmount
+      : 0,
+    status,
+    createdAt: createdAtIso,
+  };
+}
 
-  const snap = await getDocs(q);
-
-  const rows: ReportRow[] = snap.docs.map((doc) => {
-    const a: any = doc.data();
-
-    const totalAmount = Number(a.totalAmount ?? a.totalBill ?? a.total ?? 0);
-    const remainingBalance = Number(a.remainingBalance ?? a.remaining ?? 0);
-    const status = String(a.status ?? a.paymentStatus ?? "unpaid").toLowerCase();
-
-    const createdAtIso =
-      a.createdAt?.toDate?.()?.toISOString?.() ??
-      a.updatedAt?.toDate?.()?.toISOString?.() ??
-      undefined;
-
-    return {
-      id: doc.id,
-      appointmentId: String(a.appointmentId ?? doc.id),
-      patientId: a.patientId,
-      patientName: a.patientName,
-      totalAmount: Number.isFinite(totalAmount) ? totalAmount : 0,
-      remainingBalance: Number.isFinite(remainingBalance)
-        ? remainingBalance
-        : Number.isFinite(totalAmount)
-        ? totalAmount
-        : 0,
-      status,
-      createdAt: createdAtIso,
-    };
-  });
-
-  // Summary
+function summarizeRows(rows: ReportRow[]) {
   let totalBilled = 0;
   let totalOutstanding = 0;
   const byStatus: Record<string, number> = {};
@@ -107,6 +100,89 @@ export async function getBillingReport(rangeDays: number) {
   };
 }
 
+function isWithinRange(value: Date | null, fromDate: Date, toDateValue: Date) {
+  if (!value) return false;
+  const time = value.getTime();
+  return time >= fromDate.getTime() && time <= toDateValue.getTime();
+}
+
+async function buildBillingRowsForRange(fromDate: Date, toDateValue: Date) {
+  const recordsRes = await getAllBillingRecords("all");
+  if (!recordsRes.success || !recordsRes.data) {
+    throw new Error(recordsRes.error || "Failed to load billing records");
+  }
+
+  const recordRows = recordsRes.data
+    .map((record) => normalizeBillingRow(String(record.id || record.appointmentId || ""), record))
+    .filter((row) => isWithinRange(toDate(row.createdAt), fromDate, toDateValue));
+
+  const existingIds = new Set(recordRows.map((row) => row.id));
+  const fromStr = fromDate.toISOString().slice(0, 10);
+  const toStr = toDateValue.toISOString().slice(0, 10);
+  const appointmentSnap = await getDocs(
+    query(
+      collection(db, "appointments"),
+      where("date", ">=", fromStr),
+      where("date", "<=", toStr)
+    )
+  );
+
+  const virtualRows: ReportRow[] = appointmentSnap.docs
+    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Appointment) }))
+    .filter((appt: Appointment) => {
+      const appointmentId = String(appt?.id || "");
+      if (!appointmentId || existingIds.has(appointmentId)) return false;
+      const totalBill = Number(appt?.treatment?.totalBill);
+      if (!Number.isFinite(totalBill)) return false;
+
+      const appointmentDate = buildAppointmentDate(
+        typeof appt?.date === "string" ? appt.date : "",
+        typeof appt?.time === "string" ? appt.time : "00:00"
+      );
+      return isWithinRange(appointmentDate, fromDate, toDateValue);
+    })
+    .map((appt: Appointment) => {
+      const totalAmount = Number(appt?.treatment?.totalBill || 0);
+      const isPaid = String(appt?.paymentStatus || "").toLowerCase() === "paid";
+      const fallbackCreatedAt = buildAppointmentDate(
+        typeof appt?.date === "string" ? appt.date : "",
+        typeof appt?.time === "string" ? appt.time : "00:00"
+      );
+      const apptMeta = appt as Appointment & { patientName?: string };
+      const createdAt =
+        toDate(appt?.createdAt)?.toISOString?.() ??
+        fallbackCreatedAt?.toISOString?.();
+
+      return {
+        id: String(appt.id),
+        appointmentId: String(appt.id),
+        patientId: appt.patientId,
+        patientName: apptMeta.patientName,
+        totalAmount,
+        remainingBalance: isPaid ? 0 : totalAmount,
+        status: isPaid ? "paid" : "unpaid",
+        createdAt,
+      } satisfies ReportRow;
+    });
+
+  return [...recordRows, ...virtualRows].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+}
+
+export async function getBillingReport(rangeDays: number) {
+  const { auth } = await import("@/lib/firebase/firebase");
+  if (!auth.currentUser) throw new Error("Not authenticated");
+
+  // Ensure only staff can view the report (align with your app behavior)
+  const profile = await getUserProfile(auth.currentUser.uid);
+  if (!profile.success || !profile.data) throw new Error("Unable to load user profile");
+  if (profile.data.role === "client") throw new Error("Unauthorized: Staff only");
+
+  const { fromTs, toTs } = computeDateRangeTimestamps(rangeDays);
+
+  const rows = await buildBillingRowsForRange(fromTs.toDate(), toTs.toDate());
+  return summarizeRows(rows);
+}
+
 export async function getBillingReportByRange(input: { fromISO: string; toISO: string }) {
   const { auth } = await import("@/lib/firebase/firebase");
   if (!auth.currentUser) throw new Error("Not authenticated");
@@ -121,65 +197,8 @@ export async function getBillingReportByRange(input: { fromISO: string; toISO: s
     throw new Error("Invalid date range");
   }
 
-  const q = query(
-    collection(db, "billing_records"),
-    where("createdAt", ">=", Timestamp.fromDate(fromDate)),
-    where("createdAt", "<=", Timestamp.fromDate(toDate)),
-    orderBy("createdAt", "desc")
-  );
-
-  const snap = await getDocs(q);
-
-  const rows: ReportRow[] = snap.docs.map((doc) => {
-    const a: any = doc.data();
-
-    const totalAmount = Number(a.totalAmount ?? a.totalBill ?? a.total ?? 0);
-    const remainingBalance = Number(a.remainingBalance ?? a.remaining ?? 0);
-    const status = String(a.status ?? a.paymentStatus ?? "unpaid").toLowerCase();
-
-    const createdAtIso =
-      a.createdAt?.toDate?.()?.toISOString?.() ??
-      a.updatedAt?.toDate?.()?.toISOString?.() ??
-      undefined;
-
-    return {
-      id: doc.id,
-      appointmentId: String(a.appointmentId ?? doc.id),
-      patientId: a.patientId,
-      patientName: a.patientName,
-      totalAmount: Number.isFinite(totalAmount) ? totalAmount : 0,
-      remainingBalance: Number.isFinite(remainingBalance)
-        ? remainingBalance
-        : Number.isFinite(totalAmount)
-        ? totalAmount
-        : 0,
-      status,
-      createdAt: createdAtIso,
-    };
-  });
-
-  let totalBilled = 0;
-  let totalOutstanding = 0;
-  const byStatus: Record<string, number> = {};
-
-  for (const r of rows) {
-    totalBilled += r.totalAmount || 0;
-    totalOutstanding += r.remainingBalance || 0;
-    byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
-  }
-
-  const totalCollected = Math.max(0, totalBilled - totalOutstanding);
-
-  return {
-    rows,
-    summary: {
-      totalRecords: rows.length,
-      totalBilled,
-      totalCollected,
-      totalOutstanding,
-      byStatus,
-    },
-  };
+  const rows = await buildBillingRowsForRange(fromDate, toDate);
+  return summarizeRows(rows);
 }
 
 /**

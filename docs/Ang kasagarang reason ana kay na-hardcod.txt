@@ -1,0 +1,58 @@
+Ang kasagarang reason ana kay na-hardcode nimo ang localhost sa code or environment variable. So bisan naka-deploy na imong Next.js app, ang redirect link gihapon kay:
+
+http://localhost:3000/...
+
+instead of:
+
+https://yourdomain.com/...
+Common causes
+1. Na-hardcode sa code
+
+Example problem:
+
+router.push("http://localhost:3000/dashboard")
+
+or:
+
+window.location.href = "http://localhost:3000/login"
+
+Solution: use relative path instead
+
+router.push("/dashboard")
+
+or:
+
+window.location.href = "/login"
+
+Mas safe ni kay mo-work siya both local and deployed.
+
+2. Wrong .env value
+
+Example sa local:
+
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+or
+
+
+Pinaka-clean nga solution
+
+Kung same app page ra imong redirect, ayaw gamit absolute URL.
+
+Instead of:
+
+router.push("http://localhost:3000/dashboard")
+
+Use:
+
+router.push("/dashboard")
+
+Kung external or email confirmation link, use env:
+
+const baseUrl =
+  process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+const confirmationLink = `${baseUrl}/confirm/${token}`;
+Summary in Bisaya
+
+Ang cause ana kay kasagaran na bilin ang localhost sa code, .env, auth callback, or backend API URL. Ang solution kay tanggalon ang hardcoded localhost, gamit ug relative redirect paths kung same app ra, ug gamit ug production environment variables kung kailangan full URL. Sa Vercel, i-update ang env variables then redeploy.

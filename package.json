@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "audit:billing": "node scripts/audit-billing-coverage.mjs"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

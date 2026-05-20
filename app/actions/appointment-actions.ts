@@ -758,43 +758,61 @@ export async function getAppointmentsInRange({
   if (!profile.success || !profile.data) throw new Error("User profile not found");
   if (profile.data.role === "client") throw new Error("Unauthorized: Staff access required");
 
-  const fromStr = fromISO.slice(0, 10); // YYYY-MM-DD
-  const toStr = toISO.slice(0, 10);     // YYYY-MM-DD
+  const fromDate = new Date(fromISO);
+  const toDate = new Date(toISO);
+  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+    throw new Error("Invalid date range");
+  }
 
-  const q = query(
-    collection(db, "appointments"),
-    where("date", ">=", fromStr),
-    where("date", "<=", toStr)
+  const buildAppointmentDate = (dateStr?: string, timeStr?: string) => {
+    if (!dateStr) return null;
+    const parsed = new Date(`${dateStr}T${timeStr || "00:00"}:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const fromStr = fromISO.slice(0, 10);
+  const toStr = toISO.slice(0, 10);
+  const snap = await getDocs(
+    query(
+      collection(db, "appointments"),
+      where("date", ">=", fromStr),
+      where("date", "<=", toStr)
+    )
   );
 
-  const snap = await getDocs(q);
+  const rows = snap.docs
+    .map((docSnap) => {
+      const appt = { id: docSnap.id, ...(docSnap.data() as Appointment) };
+      const dateStr = typeof appt.date === "string" ? appt.date : "";
+      const timeStr = typeof appt.time === "string" ? appt.time : "00:00";
+      const startAtDate = buildAppointmentDate(dateStr, timeStr);
+      const proceduresCount = Array.isArray(appt?.treatment?.procedures)
+        ? appt.treatment.procedures.length
+        : 0;
 
-  const rows = snap.docs.map((doc) => {
-    const data: any = doc.data();
-
-    const dateStr = typeof data.date === "string" ? data.date : null;
-    const timeStr = typeof data.time === "string" ? data.time : "00:00";
-
-    // If date is missing, avoid crash and still return a row
-    const startAtDate = dateStr
-      ? new Date(`${dateStr}T${timeStr}:00`)
-      : null;
-
-    const proceduresCount = Array.isArray(data?.treatment?.procedures)
-      ? data.treatment.procedures.length
-      : 0;
-
-    return {
-      id: doc.id,
-      startAt: startAtDate && !Number.isNaN(startAtDate.getTime())
-        ? startAtDate.toISOString()
-        : new Date().toISOString(), // fallback
-      status: data.status ?? "unknown",
-      paymentStatus: data.paymentStatus ?? "unknown",
-      dentistId: data.dentistId ?? null,
-      proceduresCount,
-    };
-  });
+      return {
+        id: appt.id,
+        startAt: startAtDate?.toISOString?.() ?? "",
+        startAtDate,
+        status: appt.status ?? "unknown",
+        paymentStatus: appt.paymentStatus ?? "unknown",
+        dentistId: appt.dentistId ?? null,
+        proceduresCount,
+      };
+    })
+    .filter((row) => {
+      if (!row.startAtDate || Number.isNaN(row.startAtDate.getTime())) return false;
+      const time = row.startAtDate.getTime();
+      return time >= fromDate.getTime() && time <= toDate.getTime();
+    })
+    .map((row) => ({
+      id: row.id,
+      startAt: row.startAt,
+      status: row.status,
+      paymentStatus: row.paymentStatus,
+      dentistId: row.dentistId,
+      proceduresCount: row.proceduresCount,
+    }));
 
   return { rows };
 }

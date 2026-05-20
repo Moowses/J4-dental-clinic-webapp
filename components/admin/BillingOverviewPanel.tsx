@@ -6,7 +6,7 @@ import { getUserProfile } from "@/lib/services/user-service";
 import { getPatientRecord } from "@/lib/services/patient-service";
 import type { UserProfile } from "@/lib/types/user";
 
-type FilterKey = "unpaid" | "paid";
+type FilterKey = "all" | "unpaid" | "paid";
 
 type AnyItem = {
   id: string;
@@ -91,7 +91,7 @@ export default function BillingOverviewPanel({
   onSelectBill: (billingIdOrPatientKey: string) => void;
   refreshKey?: number;
 }) {
-  const [filter, setFilter] = useState<FilterKey>("unpaid");
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<PatientRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -110,6 +110,7 @@ export default function BillingOverviewPanel({
 
         const filtered = bills.filter((b) => {
           const t = billTotals(b);
+          if (filter === "all") return true;
           if (filter === "paid") return t.isPaid;
           return t.isUnpaid;
         });
@@ -221,7 +222,7 @@ export default function BillingOverviewPanel({
           </span>
 
           <div className="ml-0 sm:ml-2 flex gap-1">
-            {(["unpaid", "paid"] as const).map((k) => {
+            {(["all", "unpaid", "paid"] as const).map((k) => {
               const active = filter === k;
               return (
                 <button

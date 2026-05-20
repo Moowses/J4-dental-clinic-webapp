@@ -8,6 +8,7 @@ import {
   payInstallment,
 } from "@/lib/services/billing-service";
 import { BillingInstallment, BillingRecord } from "@/lib/types/billing";
+import { Appointment } from "@/lib/types/appointment";
 
 function addMonthsISO(from: Date, monthsToAdd: number) {
   const d = new Date(from);
@@ -190,7 +191,61 @@ export async function getAllBillingAction(
     return { success: false, error: "Unauthorized: Staff only" };
   }
 
-  return await getAllBillingRecords(filter);
+  const recordsRes = await getAllBillingRecords(filter);
+  if (!recordsRes.success || !recordsRes.data) {
+    return recordsRes;
+  }
+
+  const existingIds = new Set(recordsRes.data.map((bill) => String(bill.id || bill.appointmentId || "")));
+  const { db } = await import("@/lib/firebase/firebase");
+  const { collection, getDocs, query, where } = await import("firebase/firestore");
+
+  let completedAppointments: Appointment[] = [];
+  try {
+    const snap = await getDocs(query(collection(db, "appointments"), where("status", "==", "completed")));
+    completedAppointments = snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Appointment) }));
+  } catch (error) {
+    console.error("Failed to load completed appointments for billing fallback:", error);
+  }
+
+  const virtualBills: BillingRecord[] = completedAppointments
+    .filter((appt) => {
+      const id = String(appt.id || "");
+      if (!id || existingIds.has(id)) return false;
+      return Number.isFinite(Number(appt.treatment?.totalBill));
+    })
+    .map((appt) => {
+      const totalAmount = Number(appt.treatment?.totalBill || 0);
+      const status = String(appt.paymentStatus || "").toLowerCase() === "paid" ? "paid" : "unpaid";
+      return {
+        id: String(appt.id),
+        appointmentId: String(appt.id),
+        patientId: String(appt.patientId || ""),
+        totalAmount,
+        remainingBalance: status === "paid" ? 0 : totalAmount,
+        status,
+        items: [],
+        paymentPlan: { type: "full", installments: [] },
+        transactions: [],
+        createdAt: appt.createdAt,
+        updatedAt: appt.updatedAt || appt.createdAt,
+      } as BillingRecord;
+    })
+    .filter((bill) => {
+      if (filter === "paid") return bill.status === "paid";
+      if (filter === "unpaid") return bill.remainingBalance > 0;
+      if (filter === "partial") return bill.status === "partial";
+      return true;
+    });
+
+  const merged = [...recordsRes.data, ...virtualBills];
+  merged.sort((a, b) => {
+    const au = (a.updatedAt as any)?.seconds || (a.createdAt as any)?.seconds || 0;
+    const bu = (b.updatedAt as any)?.seconds || (b.createdAt as any)?.seconds || 0;
+    return bu - au;
+  });
+
+  return { success: true, data: merged };
 }
 
 /**

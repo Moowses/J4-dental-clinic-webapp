@@ -242,7 +242,7 @@ async function resolvePatientLabel(
 }
 
 export default function BillingReportPanel() {
-  const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30);
+  const [rangeDays, setRangeDays] = useState<7 | 30 | 90 | 180 | 365>(90);
   const [customRange, setCustomRange] = useState<{ from: string; to: string } | null>(null);
   const [fromDate, setFromDate] = useState<string>("");
   const [toDateValue, setToDateValue] = useState<string>("");
@@ -667,7 +667,7 @@ export default function BillingReportPanel() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold text-slate-700">Range:</span>
-              {[7, 30, 90].map((d) => (
+              {[7, 30, 90, 180, 365].map((d) => (
                 <button
                   key={d}
                   onClick={() => setRangeDays(d as any)}
@@ -678,7 +678,7 @@ export default function BillingReportPanel() {
                       : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
                   ].join(" ")}
                 >
-                  {d}d
+                  {d === 90 ? "3m" : d === 180 ? "6m" : d === 365 ? "12m" : `${d}d`}
                 </button>
               ))}
             </div>

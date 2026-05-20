@@ -20,10 +20,10 @@ type AppointmentReportResponse = {
   rows: AppointmentRow[];
 };
 
-type Preset = "7d" | "30d" | "thisMonth" | "lastMonth";
+type Preset = "7d" | "30d" | "90d" | "180d" | "365d" | "thisMonth" | "lastMonth";
 
 export default function AppointmentSummaryReportPanel() {
-  const [preset, setPreset] = useState<Preset>("thisMonth");
+  const [preset, setPreset] = useState<Preset>("90d");
   const [customRange, setCustomRange] = useState<{ from: string; to: string } | null>(null);
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
@@ -57,6 +57,27 @@ export default function AppointmentSummaryReportPanel() {
       start.setHours(0, 0, 0, 0);
       end.setHours(23, 59, 59, 999);
       return { fromISO: start.toISOString(), toISO: end.toISOString(), subtitle: "Last 30 days" };
+    }
+
+    if (preset === "90d") {
+      start.setDate(now.getDate() - 89);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      return { fromISO: start.toISOString(), toISO: end.toISOString(), subtitle: "Last 3 months" };
+    }
+
+    if (preset === "180d") {
+      start.setDate(now.getDate() - 179);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      return { fromISO: start.toISOString(), toISO: end.toISOString(), subtitle: "Last 6 months" };
+    }
+
+    if (preset === "365d") {
+      start.setDate(now.getDate() - 364);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      return { fromISO: start.toISOString(), toISO: end.toISOString(), subtitle: "Last 12 months" };
     }
 
     if (preset === "lastMonth") {
@@ -210,6 +231,9 @@ export default function AppointmentSummaryReportPanel() {
           {/* Presets */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-slate-700">Range:</span>
+            <PresetBtn label="3 months" active={preset === "90d"} onClick={() => setPreset("90d")} />
+            <PresetBtn label="6 months" active={preset === "180d"} onClick={() => setPreset("180d")} />
+            <PresetBtn label="12 months" active={preset === "365d"} onClick={() => setPreset("365d")} />
             <PresetBtn label="This month" active={preset === "thisMonth"} onClick={() => setPreset("thisMonth")} />
             <PresetBtn label="Last month" active={preset === "lastMonth"} onClick={() => setPreset("lastMonth")} />
             <PresetBtn label="7 days" active={preset === "7d"} onClick={() => setPreset("7d")} />

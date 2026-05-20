@@ -655,8 +655,13 @@ function ReportsPrintPageInner() {
           color: #64748b;
           padding: 0 14mm;
           display: flex;
-          justify-content: space-between;
+          justify-content: flex-end;
           align-items: center;
+          gap: 20px;
+        }
+
+        .footer > div:first-child {
+          display: none;
         }
 
         .pagecount::after {
@@ -865,11 +870,11 @@ function ReportsPrintPageInner() {
               </table>
             ) : null}
 
-            <table className="avoid-break">
+            <table className="avoid-break" style={{ tableLayout: "fixed" }}>
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th style={{ width: 170 }} className="num">
+                  <th style={{ width: "72%", textAlign: "left" }}>Date</th>
+                  <th style={{ width: "28%" }} className="num">
                     Appointments
                   </th>
                 </tr>
@@ -877,7 +882,7 @@ function ReportsPrintPageInner() {
               <tbody>
                 {apptDaily.map((d) => (
                   <tr key={d.day}>
-                    <td>{d.day}</td>
+                    <td style={{ textAlign: "left" }}>{d.day}</td>
                     <td className="num">{d.count}</td>
                   </tr>
                 ))}
