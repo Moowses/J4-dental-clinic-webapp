@@ -203,7 +203,10 @@ export async function getAllBillingAction(
   let completedAppointments: Appointment[] = [];
   try {
     const snap = await getDocs(query(collection(db, "appointments"), where("status", "==", "completed")));
-    completedAppointments = snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Appointment) }));
+    completedAppointments = snap.docs.map((doc) => ({
+      ...(doc.data() as Omit<Appointment, "id">),
+      id: doc.id,
+    }));
   } catch (error) {
     console.error("Failed to load completed appointments for billing fallback:", error);
   }

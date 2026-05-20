@@ -782,7 +782,10 @@ export async function getAppointmentsInRange({
 
   const rows = snap.docs
     .map((docSnap) => {
-      const appt = { id: docSnap.id, ...(docSnap.data() as Appointment) };
+      const appt = {
+        ...(docSnap.data() as Omit<Appointment, "id">),
+        id: docSnap.id,
+      };
       const dateStr = typeof appt.date === "string" ? appt.date : "";
       const timeStr = typeof appt.time === "string" ? appt.time : "00:00";
       const startAtDate = buildAppointmentDate(dateStr, timeStr);

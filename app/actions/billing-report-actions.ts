@@ -38,8 +38,11 @@ function toDate(input: unknown): Date | null {
   try {
     if (!input) return null;
     if (input instanceof Date) return input;
-    if (typeof input?.toDate === "function") return input.toDate();
-    if (typeof input?.seconds === "number") return new Date(input.seconds * 1000);
+    if (typeof input === "object") {
+      const value = input as { toDate?: () => Date; seconds?: number };
+      if (typeof value.toDate === "function") return value.toDate();
+      if (typeof value.seconds === "number") return new Date(value.seconds * 1000);
+    }
     if (typeof input === "string" || typeof input === "number") {
       const parsed = new Date(input);
       return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -50,10 +53,23 @@ function toDate(input: unknown): Date | null {
   }
 }
 
-function normalizeBillingRow(id: string, raw: Partial<BillingRecord> & Record<string, unknown>): ReportRow {
+function normalizeBillingRow(
+  id: string,
+  raw: Partial<BillingRecord> & {
+    totalBill?: unknown;
+    total?: unknown;
+    remaining?: unknown;
+    paymentStatus?: unknown;
+    patientName?: unknown;
+    createdAt?: unknown;
+    updatedAt?: unknown;
+  }
+): ReportRow {
   const totalAmount = Number(raw?.totalAmount ?? raw?.totalBill ?? raw?.total ?? 0);
   const remainingBalance = Number(raw?.remainingBalance ?? raw?.remaining ?? 0);
   const status = String(raw?.status ?? raw?.paymentStatus ?? "unpaid").toLowerCase();
+  const patientId = typeof raw?.patientId === "string" ? raw.patientId : undefined;
+  const patientName = typeof raw?.patientName === "string" ? raw.patientName : undefined;
   const createdAtIso =
     toDate(raw?.createdAt)?.toISOString?.() ??
     toDate(raw?.updatedAt)?.toISOString?.() ??
@@ -62,8 +78,8 @@ function normalizeBillingRow(id: string, raw: Partial<BillingRecord> & Record<st
   return {
     id,
     appointmentId: String(raw?.appointmentId ?? id),
-    patientId: raw?.patientId,
-    patientName: raw?.patientName,
+    patientId,
+    patientName,
     totalAmount: Number.isFinite(totalAmount) ? totalAmount : 0,
     remainingBalance: Number.isFinite(remainingBalance)
       ? remainingBalance
@@ -128,7 +144,10 @@ async function buildBillingRowsForRange(fromDate: Date, toDateValue: Date) {
   );
 
   const virtualRows: ReportRow[] = appointmentSnap.docs
-    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Appointment) }))
+    .map((docSnap) => ({
+      ...(docSnap.data() as Omit<Appointment, "id">),
+      id: docSnap.id,
+    }))
     .filter((appt: Appointment) => {
       const appointmentId = String(appt?.id || "");
       if (!appointmentId || existingIds.has(appointmentId)) return false;
