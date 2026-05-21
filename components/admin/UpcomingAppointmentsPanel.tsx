@@ -299,9 +299,11 @@ function DeleteConfirmModal({
 export default function UpcomingAppointmentsPanel({
   view = "upcoming",
   canDelete = false,
+  onOpenBilling,
 }: {
   view?: "upcoming" | "previous" | "completed" | "cancelled" | "no_show";
   canDelete?: boolean;
+  onOpenBilling?: (appointmentId: string) => void;
 }) {
   const previousRescheduleMessage =
     "To book again another appointment, you can reschedule future or upcoming booking, not past booking.";
@@ -312,6 +314,8 @@ export default function UpcomingAppointmentsPanel({
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [searchName, setSearchName] = useState("");
+  const [debouncedSearchName, setDebouncedSearchName] = useState("");
 
   const [dentists, setDentists] = useState<UserProfile[]>([]);
   const [rows, setRows] = useState<UpcomingRow[]>([]);
@@ -359,30 +363,41 @@ export default function UpcomingAppointmentsPanel({
     setSuccessMsg(null);
 
     try {
-      const dates =
-        filterMode === "month"
-          ? buildMonthDateRange(selectedMonth)
-          : buildDateRange(view === "previous" ? "previous" : "upcoming", range);
-
-      const concurrency = 6;
-      let idx = 0;
       const results: UpcomingRow[] = [];
+      const searchingAllDates = debouncedSearchName.trim().length > 0;
 
-      const workers = new Array(concurrency).fill(0).map(async () => {
-        while (idx < dates.length) {
-          const my = idx++;
-          const dateStr = dates[my];
-
-          const res = await getClinicScheduleAction(dateStr);
-          if (res?.success && res.data) {
-            for (const a of res.data as any[]) {
-              results.push({ ...(a as any), dateStr });
-            }
+      if (searchingAllDates) {
+        const res = await getClinicScheduleAction();
+        if (res?.success && res.data) {
+          for (const a of res.data as any[]) {
+            results.push({ ...(a as any), dateStr: String((a as any).date || "") });
           }
         }
-      });
+      } else {
+        const dates =
+          filterMode === "month"
+            ? buildMonthDateRange(selectedMonth)
+            : buildDateRange(view === "previous" ? "previous" : "upcoming", range);
 
-      await Promise.all(workers);
+        const concurrency = 6;
+        let idx = 0;
+
+        const workers = new Array(concurrency).fill(0).map(async () => {
+          while (idx < dates.length) {
+            const my = idx++;
+            const dateStr = dates[my];
+
+            const res = await getClinicScheduleAction(dateStr);
+            if (res?.success && res.data) {
+              for (const a of res.data as any[]) {
+                results.push({ ...(a as any), dateStr });
+              }
+            }
+          }
+        });
+
+        await Promise.all(workers);
+      }
 
       results.sort((a, b) => {
         const da = a.dateStr.localeCompare(b.dateStr);
@@ -390,7 +405,7 @@ export default function UpcomingAppointmentsPanel({
         return String(a.time || "").localeCompare(String(b.time || ""));
       });
 
-      if (view === "previous") {
+      if (view === "previous" || (searchingAllDates && view !== "upcoming")) {
         results.reverse();
       }
 
@@ -400,7 +415,15 @@ export default function UpcomingAppointmentsPanel({
     } finally {
       setLoading(false);
     }
-  }, [filterMode, range, selectedMonth, view]);
+  }, [debouncedSearchName, filterMode, range, selectedMonth, view]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchName(searchName.trim());
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [searchName]);
 
   useEffect(() => {
     setRange(view === "previous" ? "30d" : "2m");
@@ -423,19 +446,44 @@ export default function UpcomingAppointmentsPanel({
 
   const visibleRows = useMemo(() => {
     const getStatus = (a: UpcomingRow) => String(a.status || "").toLowerCase();
+    const query = debouncedSearchName.trim().toLowerCase();
+    const byView =
+      view === "completed"
+        ? rows.filter((a) => getStatus(a) === "completed")
+        : view === "previous"
+        ? rows
+        : view === "cancelled"
+        ? rows.filter((a) => getStatus(a) === "cancelled")
+        : view === "no_show"
+        ? rows.filter((a) => getStatus(a) === "no_show")
+        : rows.filter((a) => {
+            const s = getStatus(a);
+            return s !== "completed" && s !== "cancelled" && s !== "no_show";
+          });
+
+    if (!query) return byView;
+
+    return byView.filter((a) => {
+      const patientName = String(a.patientName || "").toLowerCase();
+      return patientName.includes(query);
+    });
+  }, [debouncedSearchName, rows, view]);
+
+  const hasRowsForView = useMemo(() => {
+    const getStatus = (a: UpcomingRow) => String(a.status || "").toLowerCase();
     if (view === "completed") {
-      return rows.filter((a) => getStatus(a) === "completed");
+      return rows.some((a) => getStatus(a) === "completed");
     }
     if (view === "previous") {
-      return rows;
+      return rows.length > 0;
     }
     if (view === "cancelled") {
-      return rows.filter((a) => getStatus(a) === "cancelled");
+      return rows.some((a) => getStatus(a) === "cancelled");
     }
     if (view === "no_show") {
-      return rows.filter((a) => getStatus(a) === "no_show");
+      return rows.some((a) => getStatus(a) === "no_show");
     }
-    return rows.filter((a) => {
+    return rows.some((a) => {
       const s = getStatus(a);
       return s !== "completed" && s !== "cancelled" && s !== "no_show";
     });
@@ -665,6 +713,14 @@ export default function UpcomingAppointmentsPanel({
             </select>
           )}
 
+          <input
+            type="search"
+            value={searchName}
+            onChange={(e) => setSearchName(e.target.value)}
+            placeholder="Search patient name"
+            className="min-w-[210px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-300"
+          />
+
           <button
             onClick={fetchUpcoming}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -691,7 +747,9 @@ export default function UpcomingAppointmentsPanel({
           <p className="text-sm text-slate-500">Loading...</p>
         ) : visibleRows.length === 0 ? (
           <p className="text-sm text-slate-500 italic">
-            {view === "completed"
+            {searchName.trim() && hasRowsForView
+              ? "No appointments match that patient name."
+              : view === "completed"
               ? "No completed appointments."
               : view === "previous"
               ? "No previous bookings found."
@@ -816,6 +874,17 @@ export default function UpcomingAppointmentsPanel({
                           className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {busy[id]?.deleting ? "Deleting..." : "Delete"}
+                        </button>
+                      ) : null}
+
+                      {isCompleted && onOpenBilling ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenBilling(id)}
+                          disabled={isBusy}
+                          className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-extrabold text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Billing
                         </button>
                       ) : null}
                     </div>

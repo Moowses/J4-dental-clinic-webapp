@@ -293,6 +293,11 @@ export default function AdminDashboardPage() {
     setActiveBillingId(null);
   };
 
+  const openBillingForAppointment = (appointmentId: string) => {
+    setActiveBillingId(appointmentId);
+    setTab("billing");
+  };
+
   const goInventory = () => setTab("inventory");
 
   const getMetricSizeClass = (displayValue: string) => {
@@ -706,7 +711,13 @@ export default function AdminDashboardPage() {
                 {apptTab === "calendar" && <ClinicSchedulePanel />}
                 {apptTab === "upcoming" && <UpcomingAppointmentsPanel view="upcoming" canDelete={isAdmin} />}
                 {apptTab === "previous" && <UpcomingAppointmentsPanel view="previous" canDelete={isAdmin} />}
-                {apptTab === "completed" && <UpcomingAppointmentsPanel view="completed" canDelete={isAdmin} />}
+                {apptTab === "completed" && (
+                  <UpcomingAppointmentsPanel
+                    view="completed"
+                    canDelete={isAdmin}
+                    onOpenBilling={openBillingForAppointment}
+                  />
+                )}
                 {apptTab === "cancelled" && <UpcomingAppointmentsPanel view="cancelled" canDelete={isAdmin} />}
                 {apptTab === "no_show" && <UpcomingAppointmentsPanel view="no_show" canDelete={isAdmin} />}
                 {apptTab === "unassigned" && <UnassignedAppointmentsPanel canDelete={isAdmin} />}

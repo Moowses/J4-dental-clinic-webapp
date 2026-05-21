@@ -795,6 +795,8 @@ export async function getAppointmentsInRange({
 
       return {
         id: appt.id,
+        patientId: appt.patientId ?? "",
+        serviceType: appt.serviceType ?? "",
         startAt: startAtDate?.toISOString?.() ?? "",
         startAtDate,
         status: appt.status ?? "unknown",
@@ -807,15 +809,32 @@ export async function getAppointmentsInRange({
       if (!row.startAtDate || Number.isNaN(row.startAtDate.getTime())) return false;
       const time = row.startAtDate.getTime();
       return time >= fromDate.getTime() && time <= toDate.getTime();
-    })
-    .map((row) => ({
-      id: row.id,
-      startAt: row.startAt,
-      status: row.status,
-      paymentStatus: row.paymentStatus,
-      dentistId: row.dentistId,
-      proceduresCount: row.proceduresCount,
-    }));
+    });
 
-  return { rows };
+  const patientIds = Array.from(new Set(rows.map((row) => row.patientId).filter(Boolean)));
+  const patientNameMap = new Map<string, string>();
+  await Promise.all(
+    patientIds.map(async (patientId) => {
+      const profile = await getUserProfile(patientId);
+      const name =
+        profile?.success && profile.data
+          ? profile.data.displayName || profile.data.email || patientId
+          : patientId;
+      patientNameMap.set(patientId, name);
+    })
+  );
+
+  const enrichedRows = rows.map((row) => ({
+    id: row.id,
+    patientId: row.patientId,
+    patientName: patientNameMap.get(row.patientId) || row.patientId || "Unknown Patient",
+    serviceType: row.serviceType,
+    startAt: row.startAt,
+    status: row.status,
+    paymentStatus: row.paymentStatus,
+    dentistId: row.dentistId,
+    proceduresCount: row.proceduresCount,
+  }));
+
+  return { rows: enrichedRows };
 }

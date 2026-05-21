@@ -11,6 +11,8 @@ import { getAppointmentsInRange } from "@/app/actions/appointment-actions";
 type AppointmentRow = {
   id: string;
   startAt: string; // ISO datetime
+  patientName?: string;
+  serviceType?: string;
   status?: string;
   dentistId?: string | null;
   proceduresCount?: number;
@@ -140,6 +142,13 @@ export default function AppointmentSummaryReportPanel() {
     window.open(`${base}&${params.toString()}`, "_blank", "noopener,noreferrer");
   }
 
+  function selectPreset(nextPreset: Preset) {
+    setCustomRange(null);
+    setFromDate("");
+    setToDate("");
+    setPreset(nextPreset);
+  }
+
   useEffect(() => {
     if (tooManyRows) {
       if (dentistStats.length) setDentistStats([]);
@@ -231,13 +240,13 @@ export default function AppointmentSummaryReportPanel() {
           {/* Presets */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-slate-700">Range:</span>
-            <PresetBtn label="3 months" active={preset === "90d"} onClick={() => setPreset("90d")} />
-            <PresetBtn label="6 months" active={preset === "180d"} onClick={() => setPreset("180d")} />
-            <PresetBtn label="12 months" active={preset === "365d"} onClick={() => setPreset("365d")} />
-            <PresetBtn label="This month" active={preset === "thisMonth"} onClick={() => setPreset("thisMonth")} />
-            <PresetBtn label="Last month" active={preset === "lastMonth"} onClick={() => setPreset("lastMonth")} />
-            <PresetBtn label="7 days" active={preset === "7d"} onClick={() => setPreset("7d")} />
-            <PresetBtn label="30 days" active={preset === "30d"} onClick={() => setPreset("30d")} />
+            <PresetBtn label="3 months" active={!customRange && preset === "90d"} onClick={() => selectPreset("90d")} />
+            <PresetBtn label="6 months" active={!customRange && preset === "180d"} onClick={() => selectPreset("180d")} />
+            <PresetBtn label="12 months" active={!customRange && preset === "365d"} onClick={() => selectPreset("365d")} />
+            <PresetBtn label="This month" active={!customRange && preset === "thisMonth"} onClick={() => selectPreset("thisMonth")} />
+            <PresetBtn label="Last month" active={!customRange && preset === "lastMonth"} onClick={() => selectPreset("lastMonth")} />
+            <PresetBtn label="7 days" active={!customRange && preset === "7d"} onClick={() => selectPreset("7d")} />
+            <PresetBtn label="30 days" active={!customRange && preset === "30d"} onClick={() => selectPreset("30d")} />
             <button
               onClick={onPrint}
               className="ml-2 rounded-full px-4 py-1.5 text-sm font-extrabold bg-slate-900 text-white hover:bg-slate-800"
@@ -309,56 +318,31 @@ export default function AppointmentSummaryReportPanel() {
             <Card label="This month vs last month" value={stats.monthVsMonthText} />
           </div>
 
-          {/* Comparison */}
-          {dentistStats.length ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-extrabold text-slate-900">Dentist Productivity</p>
-              <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr className="text-left text-slate-600">
-                      <th className="px-4 py-3 font-bold">Dentist</th>
-                      <th className="px-4 py-3 font-bold">Completed appts</th>
-                      <th className="px-4 py-3 font-bold">Procedures</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dentistStats.map((d) => (
-                      <tr key={d.dentistId} className="border-t border-slate-200">
-                        <td className="px-4 py-3 font-semibold text-slate-900">
-                          {d.dentistName}
-                        </td>
-                        <td className="px-4 py-3 text-slate-700">{d.appointments}</td>
-                        <td className="px-4 py-3 text-slate-700">{d.procedures}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Daily table */}
+          {/* Appointment details */}
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50">
                 <tr className="text-left text-slate-600">
-                  <th className="px-4 py-3 font-bold">Day</th>
-                  <th className="px-4 py-3 font-bold">Appointments</th>
+                  <th className="px-4 py-3 font-bold">Date and Time</th>
+                  <th className="px-4 py-3 font-bold">Patient Name</th>
+                  <th className="px-4 py-3 font-bold">Service Booked</th>
                 </tr>
               </thead>
-            <tbody>
-                {stats.dailyCounts.map((d) => (
-                    <tr key={d.day} className="border-t border-slate-200">
+              <tbody>
+                {rows.map((appointment) => (
+                  <tr key={appointment.id} className="border-t border-slate-200">
                     <td className="px-4 py-3 font-semibold text-slate-900">
-                        {new Date(d.day).toLocaleDateString()}
+                      {formatAppointmentDateTime(appointment.startAt)}
                     </td>
                     <td className="px-4 py-3 text-slate-700">
-                        {d.count}
+                      {appointment.patientName || "Unknown Patient"}
                     </td>
-                    </tr>
+                    <td className="px-4 py-3 text-slate-700">
+                      {appointment.serviceType || "Dental Service"}
+                    </td>
+                  </tr>
                 ))}
-                </tbody>
+              </tbody>
             </table>
           </div>
 
@@ -402,6 +386,20 @@ function Card({ label, value }: { label: string; value: any }) {
 
 function monthLabel(d: Date) {
   return d.toLocaleString(undefined, { month: "short", year: "numeric" });
+}
+
+function formatAppointmentDateTime(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 /**

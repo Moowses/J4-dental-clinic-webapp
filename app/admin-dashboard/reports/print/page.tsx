@@ -32,6 +32,8 @@ type BillingReportResponse = {
 type AppointmentRow = {
   id: string;
   startAt: string;
+  patientName?: string;
+  serviceType?: string;
   status?: string;
   dentistId?: string | null;
   proceduresCount?: number;
@@ -91,6 +93,20 @@ function money(n: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function formatDateTime(iso?: string) {
+  if (!iso) return "â€”";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "â€”";
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function normalizeBillingReport(raw: any): BillingReportResponse {
@@ -379,19 +395,6 @@ function ReportsPrintPageInner() {
       : type === "appointments"
       ? "Appointment Summary Report"
       : "Inventory Report";
-
-  const apptDaily = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const r of appointments) {
-      const d = new Date(r.startAt);
-      if (Number.isNaN(d.getTime())) continue;
-      const key = d.toISOString().slice(0, 10);
-      map.set(key, (map.get(key) ?? 0) + 1);
-    }
-    return Array.from(map.entries())
-      .map(([day, count]) => ({ day, count }))
-      .sort((a, b) => a.day.localeCompare(b.day));
-  }, [appointments]);
 
   const apptTotals = useMemo(() => {
     const total = appointments.length;
@@ -845,45 +848,20 @@ function ReportsPrintPageInner() {
               </div>
             </div>
 
-            {dentistStats.length ? (
-              <table className="avoid-break">
-                <thead>
-                  <tr>
-                    <th>Dentist</th>
-                    <th style={{ width: 160 }} className="num">
-                      Completed appts
-                    </th>
-                    <th style={{ width: 140 }} className="num">
-                      Procedures
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dentistStats.map((d) => (
-                    <tr key={d.dentistId}>
-                      <td>{d.dentistName}</td>
-                      <td className="num">{d.appointments}</td>
-                      <td className="num">{d.procedures}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : null}
-
             <table className="avoid-break" style={{ tableLayout: "fixed" }}>
               <thead>
                 <tr>
-                  <th style={{ width: "72%", textAlign: "left" }}>Date</th>
-                  <th style={{ width: "28%" }} className="num">
-                    Appointments
-                  </th>
+                  <th style={{ width: "28%", textAlign: "left" }}>Date and Time</th>
+                  <th style={{ width: "34%", textAlign: "left" }}>Patient Name</th>
+                  <th style={{ width: "38%", textAlign: "left" }}>Service Booked</th>
                 </tr>
               </thead>
               <tbody>
-                {apptDaily.map((d) => (
-                  <tr key={d.day}>
-                    <td style={{ textAlign: "left" }}>{d.day}</td>
-                    <td className="num">{d.count}</td>
+                {appointments.map((appointment) => (
+                  <tr key={appointment.id}>
+                    <td style={{ textAlign: "left" }}>{formatDateTime(appointment.startAt)}</td>
+                    <td style={{ textAlign: "left" }}>{appointment.patientName || "Unknown Patient"}</td>
+                    <td style={{ textAlign: "left" }}>{appointment.serviceType || "Dental Service"}</td>
                   </tr>
                 ))}
               </tbody>
