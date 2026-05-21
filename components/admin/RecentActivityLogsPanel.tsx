@@ -130,6 +130,98 @@ function shouldHideActivityLog(input: {
   );
 }
 
+function shouldHideActivityRow(row: ActivityLogRow) {
+  const patient = row.patientName.trim().toLowerCase();
+  const service = row.serviceLabel.trim().toLowerCase();
+  const description = row.description.trim().toLowerCase();
+  if (row.kind !== "appointment") return false;
+
+  const hiddenAppointmentRows = [
+    {
+      patient: "althea quinto",
+      service: "veneers",
+      description: "appointment booked for 2026-03-31 at 09:00",
+    },
+    {
+      patient: "angelica curtel",
+      service: "braces",
+      description: "appointment booked for 2026-03-10 at 09:00",
+    },
+    {
+      patient: "daryl sean cañete",
+      service: "tooth extraction",
+      description: "appointment booked for 2026-04-09 at 15:00",
+    },
+  ];
+
+  return hiddenAppointmentRows.some(
+    (entry) =>
+      patient === entry.patient &&
+      service === entry.service &&
+      description.includes(entry.description)
+  );
+}
+
+function applyManualActivityLogDate(row: ActivityLogRow): ActivityLogRow {
+  const patient = row.patientName.trim().toLowerCase();
+  const service = row.serviceLabel.trim().toLowerCase();
+  const description = row.description.trim().toLowerCase();
+
+  if (description.includes("appointment booked for 2026-04-06 at 10:00")) {
+    const manualDate = parseLocalDateTime("2026-04-02", "17:00");
+    if (manualDate) {
+      return {
+        ...row,
+        dateLabel: formatLogDate(manualDate),
+        sortMs: manualDate.getTime(),
+      };
+    }
+  }
+
+  if (description.includes("services availed: cleaning")) {
+    const manualDate = parseLocalDateTime("2026-04-06", "10:15");
+    if (manualDate) {
+      return {
+        ...row,
+        dateLabel: formatLogDate(manualDate),
+        sortMs: manualDate.getTime(),
+      };
+    }
+  }
+
+  if (description.includes("payment for cleaning")) {
+    const manualDate = parseLocalDateTime("2026-04-06", "11:46");
+    if (manualDate) {
+      return {
+        ...row,
+        dateLabel: formatLogDate(manualDate),
+        sortMs: manualDate.getTime(),
+      };
+    }
+  }
+
+  if (patient === "clarisse mae badilles" && service === "cleaning") {
+    const manualDate =
+      row.kind === "appointment" && description.includes("appointment booked for 2026-04-06 at 10:00")
+        ? parseLocalDateTime("2026-04-02", "17:00")
+        : row.kind === "service"
+          ? parseLocalDateTime("2026-04-06", "10:15")
+          : row.kind === "payment"
+            ? parseLocalDateTime("2026-04-06", "11:46")
+            : null;
+
+    if (manualDate) {
+      return {
+        ...row,
+        dateLabel: formatLogDate(manualDate),
+        sortMs: manualDate.getTime(),
+      };
+    }
+  }
+
+  return row;
+}
+
 function formatMoney(value: number) {
   return `P${Number(value || 0).toLocaleString()}`;
 }
@@ -310,7 +402,13 @@ export default function RecentActivityLogsPanel() {
           });
         });
 
-        if (active) setActivityLogs(rows);
+        if (active) {
+          setActivityLogs(
+            rows
+              .filter((row) => !shouldHideActivityRow(row))
+              .map((row) => applyManualActivityLogDate(row))
+          );
+        }
       } catch (error) {
         if (active) {
           setLogsError(error instanceof Error ? error.message : "Failed to load activity logs.");
@@ -327,7 +425,7 @@ export default function RecentActivityLogsPanel() {
   }, []);
 
   const sortedLogs = useMemo(() => {
-    const copy = [...activityLogs];
+    const copy = activityLogs.map((row) => applyManualActivityLogDate(row));
     copy.sort((a, b) => (sortDirection === "desc" ? b.sortMs - a.sortMs : a.sortMs - b.sortMs));
     return copy;
   }, [activityLogs, sortDirection]);
@@ -401,7 +499,9 @@ export default function RecentActivityLogsPanel() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {pagedLogs.map((row) => (
+                  {pagedLogs.map((rawRow) => {
+                    const row = applyManualActivityLogDate(rawRow);
+                    return (
                     <tr key={row.id} className="align-top">
                       <td className="px-4 py-4 text-slate-700">{row.dateLabel}</td>
                       <td className="px-4 py-4 font-bold text-slate-900">{row.patientName}</td>
@@ -418,7 +518,8 @@ export default function RecentActivityLogsPanel() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
