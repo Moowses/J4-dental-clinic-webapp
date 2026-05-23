@@ -121,11 +121,18 @@ function getStartOfCurrentMonth() {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
-function sortAppointmentsAscending(rows: AppointmentRow[]) {
+function sortAppointmentsByRecentMonthAscending(rows: AppointmentRow[]) {
   return [...rows].sort((a, b) => {
     const aTime = new Date(a.startAt).getTime();
     const bTime = new Date(b.startAt).getTime();
-    return (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
+    const safeA = Number.isNaN(aTime) ? 0 : aTime;
+    const safeB = Number.isNaN(bTime) ? 0 : bTime;
+    const aDate = new Date(safeA);
+    const bDate = new Date(safeB);
+    const aMonth = aDate.getFullYear() * 12 + aDate.getMonth();
+    const bMonth = bDate.getFullYear() * 12 + bDate.getMonth();
+    if (aMonth !== bMonth) return bMonth - aMonth;
+    return safeA - safeB;
   });
 }
 
@@ -379,7 +386,7 @@ function ReportsPrintPageInner() {
             toISO = end.toISOString();
           }
           const res = (await getAppointmentsInRange({ fromISO, toISO })) as { rows: AppointmentRow[] };
-          if (!cancelled) setAppointments(sortAppointmentsAscending(res?.rows || []));
+          if (!cancelled) setAppointments(sortAppointmentsByRecentMonthAscending(res?.rows || []));
         } else if (type === "inventory") {
           const res = (await getInventoryReport()) as { rows: InventoryRow[] };
           if (!cancelled) setInventoryRows(res?.rows || []);

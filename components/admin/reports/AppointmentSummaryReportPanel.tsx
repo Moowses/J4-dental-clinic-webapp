@@ -58,7 +58,7 @@ export default function AppointmentSummaryReportPanel() {
     };
   }, [fromISO, toISO]);
 
-  const rows = useMemo(() => sortAppointmentsAscending(data?.rows ?? []), [data]);
+  const rows = useMemo(() => sortAppointmentsByRecentMonthAscending(data?.rows ?? []), [data]);
   const tooManyRows = rows.length > 2000;
 
   function onPrint() {
@@ -218,10 +218,17 @@ function getStartOfCurrentMonth() {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
-function sortAppointmentsAscending(rows: AppointmentRow[]) {
+function sortAppointmentsByRecentMonthAscending(rows: AppointmentRow[]) {
   return [...rows].sort((a, b) => {
     const aTime = new Date(a.startAt).getTime();
     const bTime = new Date(b.startAt).getTime();
-    return (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
+    const safeA = Number.isNaN(aTime) ? 0 : aTime;
+    const safeB = Number.isNaN(bTime) ? 0 : bTime;
+    const aDate = new Date(safeA);
+    const bDate = new Date(safeB);
+    const aMonth = aDate.getFullYear() * 12 + aDate.getMonth();
+    const bMonth = bDate.getFullYear() * 12 + bDate.getMonth();
+    if (aMonth !== bMonth) return bMonth - aMonth;
+    return safeA - safeB;
   });
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import ReportShell from "./ReportShell";
-import { getBillingReport, getBillingReportByRange } from "@/app/actions/billing-report-actions";
+import { getBillingReportByRange } from "@/app/actions/billing-report-actions";
 
 import { db } from "@/lib/firebase/firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -110,6 +110,18 @@ function formatDate(iso?: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+}
+
+function getDateInputValue(d: Date) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getStartOfCurrentMonth() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
 function money(n: number) {
@@ -242,10 +254,10 @@ async function resolvePatientLabel(
 }
 
 export default function BillingReportPanel() {
-  const [rangeDays, setRangeDays] = useState<7 | 30 | 90 | 180 | 365>(90);
-  const [customRange, setCustomRange] = useState<{ from: string; to: string } | null>(null);
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDateValue, setToDateValue] = useState<string>("");
+  const today = useMemo(() => getDateInputValue(new Date()), []);
+  const currentMonthStart = useMemo(() => getDateInputValue(getStartOfCurrentMonth()), []);
+  const [fromDate, setFromDate] = useState<string>(currentMonthStart);
+  const [toDateValue, setToDateValue] = useState<string>(today);
   const [data, setData] = useState<BillingReportResponse | null>(null);
   const [txns, setTxns] = useState<TxnRow[]>([]);
   const [insights, setInsights] = useState<BillingInsights | null>(null);
@@ -257,11 +269,10 @@ export default function BillingReportPanel() {
   const [pendingDetails, startDetailsTransition] = useTransition();
 
   const subtitle = useMemo(() => {
-    if (customRange?.from && customRange?.to) {
-      return `${customRange.from} to ${customRange.to}`;
-    }
-    return `Last ${rangeDays} days`;
-  }, [rangeDays, customRange]);
+    const from = fromDate || today;
+    const to = toDateValue || from;
+    return `${from} to ${to}`;
+  }, [fromDate, toDateValue, today]);
 
 
   const aging = useMemo(() => {
@@ -303,12 +314,8 @@ export default function BillingReportPanel() {
   function onPrint(nextView: "transactions" | "bills") {
     const base = "/admin-dashboard/reports/print?type=billing";
     const params = new URLSearchParams();
-    if (customRange?.from && customRange?.to) {
-      params.set("from", customRange.from);
-      params.set("to", customRange.to);
-    } else {
-      params.set("range", String(rangeDays));
-    }
+    params.set("from", fromDate || today);
+    params.set("to", toDateValue || fromDate || today);
     params.set("view", nextView);
     window.open(`${base}&${params.toString()}`, "_blank", "noopener,noreferrer");
   }
@@ -321,12 +328,12 @@ export default function BillingReportPanel() {
 
     startTransition(async () => {
       try {
-        const raw = customRange
-          ? await getBillingReportByRange({
-              fromISO: `${customRange.from}T00:00:00`,
-              toISO: `${customRange.to}T23:59:59`,
-            })
-          : await getBillingReport(rangeDays);
+        const from = fromDate || today;
+        const to = toDateValue || from;
+        const raw = await getBillingReportByRange({
+          fromISO: `${from}T00:00:00`,
+          toISO: `${to}T23:59:59`,
+        });
         const res = normalizeBillingReport(raw);
 
         const tooManyRows = res.rows.length > 120;
@@ -359,7 +366,7 @@ export default function BillingReportPanel() {
     return () => {
       cancelled = true;
     };
-  }, [rangeDays, customRange]);
+  }, [fromDate, toDateValue, today]);
 
   // Build transaction log by fetching billing_records doc details
   useEffect(() => {
@@ -665,23 +672,6 @@ export default function BillingReportPanel() {
         <div className="space-y-4">
           {/* controls (screen only) */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-slate-700">Range:</span>
-              {[7, 30, 90, 180, 365].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setRangeDays(d as any)}
-                  className={[
-                    "rounded-full px-3 py-1.5 text-sm font-semibold transition",
-                    rangeDays === d
-                      ? "bg-slate-900 text-white"
-                      : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-                  ].join(" ")}
-                >
-                  {d === 90 ? "3m" : d === 180 ? "6m" : d === 365 ? "12m" : `${d}d`}
-                </button>
-              ))}
-            </div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-slate-700">View:</span>
               <button
@@ -726,7 +716,7 @@ export default function BillingReportPanel() {
 
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-600">From</label>
+              <label className="block text-xs font-bold text-slate-600">Start date</label>
               <input
                 type="date"
                 value={fromDate}
@@ -735,7 +725,7 @@ export default function BillingReportPanel() {
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600">To</label>
+              <label className="block text-xs font-bold text-slate-600">End date</label>
               <input
                 type="date"
                 value={toDateValue}
@@ -743,26 +733,6 @@ export default function BillingReportPanel() {
                 className="mt-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
               />
             </div>
-            <button
-              onClick={() => {
-                if (fromDate && toDateValue) {
-                  setCustomRange({ from: fromDate, to: toDateValue });
-                }
-              }}
-              className="rounded-full px-4 py-2 text-sm font-extrabold bg-slate-900 text-white hover:bg-slate-800"
-            >
-              Apply
-            </button>
-            <button
-              onClick={() => {
-                setCustomRange(null);
-                setFromDate("");
-                setToDateValue("");
-              }}
-              className="rounded-full px-4 py-2 text-sm font-extrabold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            >
-              Clear
-            </button>
           </div>
 
           {pending ? (
