@@ -802,6 +802,16 @@ function TreatmentModal({
     );
   }, [tools, usedInv]);
 
+  const inventoryUseItems = useMemo(() => {
+    return [...(tools?.inventory || [])].sort((a, b) => {
+      const aQty = usedInv[a.id] || 0;
+      const bQty = usedInv[b.id] || 0;
+      if (aQty > 0 && bQty === 0) return -1;
+      if (aQty === 0 && bQty > 0) return 1;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  }, [tools, usedInv]);
+
   const dentalChartCount = useMemo(() => {
     return Object.keys(dentalChart || {}).length;
   }, [dentalChart]);
@@ -1129,9 +1139,7 @@ function TreatmentModal({
               <p className="text-xs font-extrabold text-slate-900">Inventory Used</p>
 
               <div className="mt-3 space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                {tools?.inventory
-                  .filter((i) => String(i.tag || "").toLowerCase() === "consumable")
-                  .map((i) => (
+                {inventoryUseItems.map((i) => (
                     <div
                       key={i.id}
                       className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50 transition"

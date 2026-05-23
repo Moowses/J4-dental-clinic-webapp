@@ -12,7 +12,7 @@ import {
 import { getAppointmentsInRange } from "@/app/actions/appointment-actions";
 import { getInventoryReport } from "@/app/actions/inventory-actions";
 import { getUserDisplayNameByUid } from "@/lib/services/user-service";
-import { isNoShowAppointmentStatus, normalizeBillingStatus } from "@/lib/status-normalizers";
+import { normalizeBillingStatus } from "@/lib/status-normalizers";
 
 type BillingRow = {
   id: string;
@@ -109,6 +109,26 @@ function formatDateTime(iso?: string) {
   });
 }
 
+function getDateInputValue(d: Date) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getStartOfCurrentMonth() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
+function sortAppointmentsAscending(rows: AppointmentRow[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = new Date(a.startAt).getTime();
+    const bTime = new Date(b.startAt).getTime();
+    return (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
+  });
+}
+
 function normalizeBillingReport(raw: any): BillingReportResponse {
   if (raw?.rows) return raw as BillingReportResponse;
   const rowsCandidate = raw?.records ?? raw?.rows ?? raw?.data ?? raw ?? [];
@@ -169,8 +189,11 @@ function ReportsPrintPageInner() {
   const subtitle = useMemo(() => {
     if (from && to) return `${from} to ${to}`;
     if (range) return `Last ${range} days`;
+    if (type === "appointments") {
+      return `${getDateInputValue(getStartOfCurrentMonth())} to ${getDateInputValue(new Date())}`;
+    }
     return "Last 30 days";
-  }, [from, to, range]);
+  }, [from, to, range, type]);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -338,7 +361,7 @@ function ReportsPrintPageInner() {
           if (from && to) {
             fromISO = `${from}T00:00:00`;
             toISO = `${to}T23:59:59`;
-          } else {
+          } else if (range) {
             const safeRangeDays = Math.max(1, Number(range || 30) || 30);
             const end = new Date();
             end.setHours(23, 59, 59, 999);
@@ -347,9 +370,16 @@ function ReportsPrintPageInner() {
             start.setHours(0, 0, 0, 0);
             fromISO = start.toISOString();
             toISO = end.toISOString();
+          } else {
+            const start = getStartOfCurrentMonth();
+            const end = new Date();
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
+            fromISO = start.toISOString();
+            toISO = end.toISOString();
           }
           const res = (await getAppointmentsInRange({ fromISO, toISO })) as { rows: AppointmentRow[] };
-          if (!cancelled) setAppointments(res?.rows || []);
+          if (!cancelled) setAppointments(sortAppointmentsAscending(res?.rows || []));
         } else if (type === "inventory") {
           const res = (await getInventoryReport()) as { rows: InventoryRow[] };
           if (!cancelled) setInventoryRows(res?.rows || []);
@@ -395,54 +425,6 @@ function ReportsPrintPageInner() {
       : type === "appointments"
       ? "Appointment Summary Report"
       : "Inventory Report";
-
-  const apptTotals = useMemo(() => {
-    const total = appointments.length;
-    const cancelled = appointments.filter((a) => String(a.status || "").toLowerCase() === "cancelled").length;
-    const noShow = appointments.filter((a) => isNoShowAppointmentStatus(a.status)).length;
-    const procedures = appointments.reduce((sum, r) => {
-      const status = String(r.status || "").toLowerCase();
-      if (status !== "completed") return sum;
-      return sum + Number(r.proceduresCount || 0);
-    }, 0);
-    return { total, cancelled, noShow, procedures };
-  }, [appointments]);
-
-  const [dentistStats, setDentistStats] = useState<
-    Array<{ dentistId: string; dentistName: string; appointments: number; procedures: number }>
-  >([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const map = new Map<string, { dentistId: string; appointments: number; procedures: number }>();
-      for (const r of appointments) {
-        const status = String(r.status || "").toLowerCase();
-        if (status !== "completed") continue;
-        const did = String(r.dentistId || "").trim();
-        if (!did) continue;
-        const prev = map.get(did) ?? { dentistId: did, appointments: 0, procedures: 0 };
-        prev.appointments += 1;
-        prev.procedures += Number(r.proceduresCount || 0);
-        map.set(did, prev);
-      }
-
-      const entries = Array.from(map.values());
-      const named = await Promise.all(
-        entries.map(async (e) => {
-          const name =
-            (await getUserDisplayNameByUid(e.dentistId)) ||
-            (e.dentistId.length > 10 ? `${e.dentistId.slice(0, 6)}…` : e.dentistId);
-          return { ...e, dentistName: name };
-        })
-      );
-
-      if (!cancelled) setDentistStats(named);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [appointments]);
 
   const billingTotals = useMemo(() => {
     const total = billingRows.reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
@@ -815,7 +797,7 @@ function ReportsPrintPageInner() {
               className="avoid-break"
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(4,1fr)",
+                gridTemplateColumns: "repeat(1,1fr)",
                 gap: 10,
                 border: "1px solid #e2e8f0",
                 borderRadius: 12,
@@ -826,25 +808,7 @@ function ReportsPrintPageInner() {
                 <div className="muted" style={{ fontSize: 10.5 }}>
                   Total appointments
                 </div>
-                <div style={{ fontWeight: 900 }}>{apptTotals.total}</div>
-              </div>
-              <div>
-                <div className="muted" style={{ fontSize: 10.5 }}>
-                  Cancellations
-                </div>
-                <div style={{ fontWeight: 900 }}>{apptTotals.cancelled}</div>
-              </div>
-              <div>
-                <div className="muted" style={{ fontSize: 10.5 }}>
-                  No-shows
-                </div>
-                <div style={{ fontWeight: 900 }}>{apptTotals.noShow}</div>
-              </div>
-              <div>
-                <div className="muted" style={{ fontSize: 10.5 }}>
-                  Procedures (completed)
-                </div>
-                <div style={{ fontWeight: 900 }}>{apptTotals.procedures}</div>
+                <div style={{ fontWeight: 900 }}>{appointments.length}</div>
               </div>
             </div>
 

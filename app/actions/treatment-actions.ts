@@ -29,16 +29,11 @@ export async function getTreatmentToolsAction(): Promise<{
     getInventory(true)
   ]);
 
-  // Filter Inventory to only show consumables
-  const consumableInventory = (inventoryRes.data || []).filter(
-    item => String(item.tag || "").toLowerCase() === "consumable"
-  );
-
   return {
     success: true,
     data: {
       procedures: proceduresRes.data || [],
-      inventory: consumableInventory
+      inventory: inventoryRes.data || []
     }
   };
 }
