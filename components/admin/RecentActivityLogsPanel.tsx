@@ -85,6 +85,16 @@ function getManualLogDate(input: {
   const time = String(input.appointmentTime || "").trim();
 
   if (
+    patient === "althea joy quinto" &&
+    service === "veneers" &&
+    date === "2026-03-31" &&
+    time === "09:00" &&
+    input.kind === "appointment"
+  ) {
+    return parseLocalDateTime("2026-03-20", "13:01");
+  }
+
+  if (
     patient === "nora gumela" &&
     service === "hawley (metal)" &&
     date === "2026-03-10" &&
